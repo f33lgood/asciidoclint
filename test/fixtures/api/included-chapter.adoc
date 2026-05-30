@@ -1,0 +1,10 @@
+=== Included Chapter Skips Level
+
+include::missing-child.adoc[]
+
+[source,json]
+----
+{
+  "name": "syntax inside source block should not be parsed as AsciiDoc",
+  "missing_json_close": true
+----

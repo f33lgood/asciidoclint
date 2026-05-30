@@ -1,0 +1,8 @@
+= Master Fixture
+:chapter-file: included-chapter.adoc
+
+include::{chapter-file}[]
+
+== After Include
+
+Text after include.

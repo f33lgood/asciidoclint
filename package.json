@@ -1,0 +1,70 @@
+{
+  "name": "asciidoclint",
+  "version": "0.5.0",
+  "description": "AsciiDoc syntax, structure, and document-policy linter",
+  "author": "Shawn Hu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/f33lgood/asciidoclint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/f33lgood/asciidoclint/issues"
+  },
+  "homepage": "https://github.com/f33lgood/asciidoclint#readme",
+  "type": "module",
+  "files": [
+    "assets",
+    "dist",
+    "!dist/**/*.test.d.ts",
+    "!dist/**/*.test.js",
+    "!dist/compare",
+    "skills"
+  ],
+  "workspaces": [
+    "packages/*"
+  ],
+  "bin": {
+    "asciidoclint": "./dist/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "version:sync": "tsx scripts/sync-version.ts",
+    "version:check": "tsx scripts/sync-version.ts --check",
+    "build": "tsc -p tsconfig.json",
+    "build:extension": "npm run build && npm run build -w ./packages/vscode-asciidoclint",
+    "test": "vitest run src/api/*.test.ts src/cli/*.test.ts src/formatters/*.test.ts src/rules/*.test.ts",
+    "test:extension": "npm test -w ./packages/vscode-asciidoclint",
+    "test:coverage": "vitest run --coverage",
+    "lint:fixtures": "tsx src/cli/index.ts --format json \"test/fixtures/**/*.adoc\"",
+    "check": "npm run version:check && npm run build && npm test && npm run test:coverage && npm run build:extension && npm run test:extension",
+    "release:npm:dry-run": "npm run version:check && npm run build && npm pack --dry-run",
+    "release:npm:publish": "npm run version:check && npm run build && npm publish --access public",
+    "release:npm:publish:provenance": "npm run version:check && npm run build && npm publish --access public --provenance",
+    "release:vscode:package": "npm run version:check && npm run build:extension && npm run package -w ./packages/vscode-asciidoclint",
+    "release:vscode:publish": "npm run version:check && npm run build:extension && npm run publish:marketplace -w ./packages/vscode-asciidoclint",
+    "release:open-vsx:publish": "npm run release:vscode:package && npm run publish:open-vsx -w ./packages/vscode-asciidoclint"
+  },
+  "dependencies": {
+    "asciidoctor": "^3.0.4",
+    "commander": "^14.0.0",
+    "fast-glob": "^3.3.3",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

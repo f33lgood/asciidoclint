@@ -1,0 +1,26 @@
+= Reference Gap Fixture
+
+include::included-with-title.adoc[]
+
+== Cleanup
+
+== Markdown Residue
+
+See [Markdown link](target.md).
+
+![Screenshot](missing.png)
+
+(https://example.com)[Example]
+
+# Markdown-compatible heading accepted by Asciidoctor
+
+```bash
+echo markdown-compatible fence
+```
+
+[source,bash]
+----
+# Not reported inside source
+![Not an image](inside-source.png)
+```
+----

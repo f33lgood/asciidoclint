@@ -1,0 +1,12 @@
+src/**
+*.tsbuildinfo
+tsconfig.json
+esbuild.mjs
+prepare-runtime.mjs
+**/*.test.js
+**/*.test.d.ts
+**/*.map
+vscode-asciidoclint-*.vsix
+node_modules/.bin/**
+node_modules/.vite/**
+node_modules/asciidoclint/**

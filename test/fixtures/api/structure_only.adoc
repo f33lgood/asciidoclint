@@ -1,0 +1,32 @@
+= Structure Only Fixture
+:toc:
+
+=== Skipped Section Level
+
+The previous section jumps from document title to level 3.
+
+= Second Top Level Title
+
+This creates a second document title.
+
+image::existing-diagram.png[]
+
+[cols="1,1", options="header"]
+|===
+| Name | Value
+| one | two | omitted
+|===
+
+Text immediately before an example block
+====
+The example block is missing its closing delimiter.
+
+== Section After Broken Block
+
+This section should reveal whether the linter detects delimiter fallout.
+
+ifdef::draft[]
+== Draft Only Section
+
+This content appears only when the draft attribute is set.
+endif::[]

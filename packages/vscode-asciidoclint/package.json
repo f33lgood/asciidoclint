@@ -1,0 +1,152 @@
+{
+  "name": "asciidoclint",
+  "displayName": "asciidoclint",
+  "description": "AsciiDoc lint diagnostics powered by asciidoclint",
+  "version": "0.5.0",
+  "publisher": "f33lgood",
+  "icon": "media/icon.png",
+  "author": "Shawn Hu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/f33lgood/asciidoclint.git",
+    "directory": "packages/vscode-asciidoclint"
+  },
+  "bugs": {
+    "url": "https://github.com/f33lgood/asciidoclint/issues"
+  },
+  "homepage": "https://github.com/f33lgood/asciidoclint/tree/main/packages/vscode-asciidoclint#readme",
+  "type": "commonjs",
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:asciidoc",
+    "onCommand:asciidoclint.lintWorkspace",
+    "onCommand:asciidoclint.rebuildDocumentGraph",
+    "onCommand:asciidoclint.cancel",
+    "onCommand:asciidoclint.importCliDiagnostics",
+    "onCommand:asciidoclint.clearDiagnostics",
+    "onCommand:asciidoclint.fixWorkspaceSafe"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "asciidoc",
+        "aliases": [
+          "AsciiDoc",
+          "asciidoc"
+        ],
+        "extensions": [
+          ".adoc",
+          ".asciidoc",
+          ".asc"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "asciidoclint.lintWorkspace",
+        "title": "asciidoclint: Lint Workspace"
+      },
+      {
+        "command": "asciidoclint.rebuildDocumentGraph",
+        "title": "asciidoclint: Rebuild Document Graph"
+      },
+      {
+        "command": "asciidoclint.cancel",
+        "title": "asciidoclint: Cancel Running Lint"
+      },
+      {
+        "command": "asciidoclint.importCliDiagnostics",
+        "title": "asciidoclint: Import CLI Diagnostics"
+      },
+      {
+        "command": "asciidoclint.clearDiagnostics",
+        "title": "asciidoclint: Clear Diagnostics"
+      },
+      {
+        "command": "asciidoclint.fixWorkspaceSafe",
+        "title": "asciidoclint: Fix Workspace (Safe)"
+      }
+    ],
+    "configuration": {
+      "title": "asciidoclint",
+      "properties": {
+        "asciidoclint.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable asciidoclint diagnostics."
+        },
+        "asciidoclint.run": {
+          "type": "string",
+          "enum": [
+            "onSave",
+            "manual"
+          ],
+          "default": "onSave",
+          "description": "When to run asciidoclint from the editor. Opening, focusing, or typing in a file does not trigger lint."
+        },
+        "asciidoclint.config": {
+          "type": "string",
+          "default": ".asciidoclint.yaml",
+          "description": "Path to asciidoclint configuration, relative to the workspace folder unless absolute."
+        },
+        "asciidoclint.customRules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional custom rule module paths or package names."
+        },
+        "asciidoclint.hiddenRules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Rule IDs or aliases to hide from editor diagnostics, for example AD000 or asciidoctor-diagnostic."
+        },
+        "asciidoclint.unsafeFixes": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow unsafe fixes when applying fixes from the editor."
+        },
+        "asciidoclint.importCliDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Import diagnostics from .asciidoclint/diagnostics.json when present."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json --noEmit && node esbuild.mjs && npm run prepare-runtime",
+    "test": "vitest run",
+    "prepare-runtime": "node prepare-runtime.mjs",
+    "package": "vsce package --no-dependencies",
+    "publish:marketplace": "vsce publish --no-dependencies",
+    "publish:open-vsx": "ovsx publish asciidoclint-${npm_package_version}.vsix"
+  },
+  "dependencies": {
+    "@asciidoctor/core": "^3.0.4",
+    "@asciidoctor/opal-runtime": "^3.0.1",
+    "asciidoctor": "^3.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.28.0",
+    "ovsx": "^0.10.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  }
+}
