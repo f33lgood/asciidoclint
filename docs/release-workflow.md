@@ -95,7 +95,7 @@ Required registrations for the planned release:
 | Registry | Registration link | Account or owner to create | Planned public identifier | Token for CI |
 | --- | --- | --- | --- | --- |
 | npm | https://www.npmjs.com/signup | npm account `f33lgood` | package `asciidoclint` | none with trusted publishing; otherwise npm token |
-| VS Code Marketplace | https://marketplace.visualstudio.com/manage/publishers/ | Marketplace publisher `f33lgood` | extension `f33lgood.asciidoclint` | `VSCE_PAT` |
+| VS Code Marketplace | https://marketplace.visualstudio.com/manage/publishers/ | Marketplace publisher `f33lgood` | extension `f33lgood.asciidoclint` | Manual `.vsix` upload first; optional `VSCE_PAT` later |
 | Open VSX | https://open-vsx.org/ | Open VSX namespace `f33lgood` | extension `f33lgood.asciidoclint` | Open VSX token |
 
 ### npm
@@ -132,10 +132,12 @@ instead.
 
 Publishing to the VS Code Marketplace requires:
 
-- A Microsoft/Azure DevOps account.
+- A Microsoft account that can manage the Marketplace publisher.
 - A Visual Studio Marketplace publisher ID. The planned publisher is
   `f33lgood`.
-- A Personal Access Token accepted by `vsce login <publisher>` or provided to CI
+- For manual publishing: a packaged `.vsix` uploaded through the Marketplace
+  publisher page.
+- For CI publishing only: a Personal Access Token accepted by `vsce`, provided
   as `VSCE_PAT`.
 
 Create or verify the `f33lgood` Marketplace publisher before release. Update
@@ -161,65 +163,208 @@ Create or claim the `f33lgood` namespace before release so Cursor,
 VSCodium, Theia, and other Open VSX-backed editors can install
 `f33lgood.asciidoclint`.
 
-GitHub Actions can automate VS Code Marketplace publishing, but it is not a
-trusted-publisher/OIDC flow like npm. The official `vsce` flow still requires a
-Marketplace Personal Access Token. Store that token as a GitHub Actions secret
-such as `VSCE_PAT`, restrict the workflow with GitHub environments or branch/tag
-rules, and rotate the PAT before expiration.
+Prefer manual VS Code Marketplace upload for the first release. `VSCE_PAT`
+automation is optional because it depends on Azure DevOps PAT creation for a
+Marketplace-capable account; new Azure DevOps organization registration may
+also require linking an Azure subscription. Keep the Marketplace automation path
+documented, but do not block the first release on it.
 
-## GitHub Actions Publishing Model
+## 3. GitHub Actions Setup
 
-Recommended GitHub Actions model:
+Goal:
 
 | Artifact | GitHub publishing method | Secret required |
 | --- | --- | --- |
-| npm package | npm trusted publisher with GitHub Actions OIDC | No long-lived npm publish token |
-| VS Code Marketplace extension | `vsce publish` from GitHub Actions | `VSCE_PAT` |
-| Open VSX extension, if used | `ovsx publish` from GitHub Actions | Open VSX token |
+| npm package | npm trusted publisher with GitHub Actions OIDC after the first publish | `NPM_TOKEN` for first publish only |
+| VS Code Marketplace extension | Manual `.vsix` upload first; optional `vsce publish` later | None for manual upload; optional `VSCE_PAT` |
+| Open VSX extension | `ovsx publish` from GitHub Actions | `OVSX_PAT` |
 
-Store Marketplace and Open VSX tokens as GitHub Actions secrets, preferably
-environment-scoped secrets. GitHub does not expose secret values publicly and
-does not show the full value again after it is saved. Workflow logs mask values
-that exactly match configured secrets, but workflows should still avoid printing
-environment variables or command traces that could leak credentials.
+### 3.1 Create GitHub Environments
 
-The npm release workflow should use a GitHub environment such as `npm-release`
-if human approval is desired. The Marketplace release workflow should use a
-separate environment such as `vscode-marketplace-release` so the PAT is only
-available to that gated job.
+1. Open `https://github.com/f33lgood/asciidoclint`.
+2. Go to **Settings**.
+3. Go to **Environments** in the left sidebar.
+4. Click **New environment**.
+5. Create these environments:
+   - `npm-release`
+   - `open-vsx-release`
+6. Optional, only when enabling VS Code Marketplace automation:
+   - `vscode-marketplace-release`
 
-The three public release jobs can be split into separate workflows or kept as
-separate jobs in one workflow. Trigger them from version tags such as `v1.2.3`
-or from published GitHub Releases. Tag-triggered workflows are suitable when the
-tag is the release authority:
+For each environment, configure **Deployment branches and tags**:
+
+1. Prefer **Selected branches and tags**.
+2. Add tag rule `v*.*.*`.
+3. Add branch rule `main`.
+4. Leave **Environment variables** empty.
+
+If GitHub shows **Required reviewers**, add the maintainer account. If that
+control is not visible, skip it.
+
+The workflow also checks that the release tag is reachable from `origin/main`:
+
+```bash
+git fetch origin main --depth=1
+git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+```
+
+### 3.2 Create npm Token or Trusted Publisher
+
+For the first publish, use an npm token because npm trusted publishing can only
+be attached after the package exists.
+
+1. Sign in to `https://www.npmjs.com/` as the long-term package owner.
+2. Enable 2FA for the account.
+3. Go to **Access Tokens** and choose **Generate New Token**.
+4. Use these npm token settings:
+   - Token type: granular access token.
+   - Name: `asciidoclint-github-actions-release`.
+   - Expiration: choose a short operational window for first publish, such as
+     7-30 days.
+   - Packages and scopes permission: **Read and write**.
+   - Packages and scopes selection:
+     - For an existing package: choose **Only select packages and scopes** and
+       select `asciidoclint`.
+     - For the first unscoped package publish, if npm cannot select
+       `asciidoclint` before it exists, use **All packages** temporarily.
+   - Organizations permission: **No access**, unless publishing under an npm
+     organization.
+   - Allowed IP ranges: leave empty for GitHub-hosted runners.
+   - Bypass 2FA: enable only for this temporary CI token if account/package 2FA
+     would otherwise block non-interactive publishing. Do not use bypass 2FA
+     after trusted publishing is configured.
+5. Copy the token once.
+6. In GitHub, open
+   `https://github.com/f33lgood/asciidoclint/settings/environments`.
+7. Open environment `npm-release`.
+8. Under **Environment secrets**, add:
+
+   ```text
+   NPM_TOKEN
+   ```
+
+9. Paste the npm token as the value.
+
+After the first successful npm release, replace the token with npm trusted
+publishing:
+
+1. Open the npm package settings for `asciidoclint`.
+2. Configure a trusted publisher for GitHub Actions.
+3. Use owner `f33lgood`.
+4. Use repository `asciidoclint`.
+5. Use workflow filename:
+
+   ```text
+   release.yml
+   ```
+
+6. Use environment:
+
+   ```text
+   npm-release
+   ```
+
+7. Allowed actions: select `npm publish`.
+8. Keep `id-token: write` in the npm job.
+9. Remove `NODE_AUTH_TOKEN` from the workflow.
+10. Delete `NPM_TOKEN` from GitHub.
+11. Revoke the temporary npm token.
+
+### 3.3 VS Code Marketplace Publishing
+
+Use manual upload for the first release:
+
+1. Build the VSIX locally:
+
+   ```bash
+   npm run release:vscode:package
+   ```
+
+2. Open `https://marketplace.visualstudio.com/manage/publishers/f33lgood`.
+3. Click **New extension**.
+4. Choose **Visual Studio Code**.
+5. Upload `packages/vscode-asciidoclint/asciidoclint-<version>.vsix`.
+6. Review the Marketplace metadata and publish.
+
+CI publishing is optional. Enable it later only if the Azure DevOps token path
+is worth maintaining:
+
+1. Create or verify publisher `f33lgood`.
+2. Create an Azure DevOps PAT for the account that owns or can publish under
+   the `f33lgood` publisher.
+3. Use PAT settings:
+   - Scope: **Marketplace**.
+   - Permission: **Manage**.
+   - Expiration: choose a practical release window and record the renewal date.
+   - Avoid broad Azure DevOps scopes that are unrelated to Marketplace
+     publishing.
+4. Add GitHub environment secret:
+
+   ```text
+   VSCE_PAT
+   ```
+
+5. Add a `vscode` job to `.github/workflows/release.yml` or run
+   `npm run release:vscode:publish` locally with `VSCE_PAT` set.
+
+### 3.4 Create Open VSX Token
+
+1. Sign in to `https://open-vsx.org/`.
+2. Create or claim namespace `f33lgood`.
+3. Create an Open VSX access token from the account settings.
+4. Copy the token once.
+5. In GitHub, open environment `open-vsx-release`.
+6. Under **Environment secrets**, add:
+
+   ```text
+   OVSX_PAT
+   ```
+
+7. Paste the Open VSX token as the value.
+
+If the namespace must be created from the CLI:
+
+```bash
+npx ovsx create-namespace f33lgood -p "$OVSX_PAT"
+```
+
+### 3.5 Add the Release Workflow
+
+Create `.github/workflows/release.yml`:
 
 ```yaml
+name: Release
+
 on:
   push:
     tags:
       - "v*.*.*"
-```
-
-Use separate GitHub environments to gate each target independently:
-
-- `npm-release`
-- `vscode-marketplace-release`
-- `open-vsx-release`
-
-The extension jobs should depend on the npm job if the extension release must
-only happen after the core package is published and install-verified.
-
-Minimal npm trusted-publishing job:
-
-```yaml
-name: Publish npm package
-
-on:
-  release:
-    types: [published]
+  workflow_dispatch:
 
 jobs:
-  publish:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci
+      - name: Verify release commit is on main
+        run: |
+          git fetch origin main --depth=1
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - run: npm run check
+      - run: npm run release:npm:dry-run
+      - run: npm run release:vscode:package
+
+  npm:
+    needs: verify
     runs-on: ubuntu-latest
     environment: npm-release
     permissions:
@@ -231,23 +376,16 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: npm
+          package-manager-cache: false
       - run: npm ci
       - run: npm run release:npm:publish
-```
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-Minimal VS Code Marketplace publishing job:
-
-```yaml
-name: Publish VS Code extension
-
-on:
-  workflow_dispatch:
-
-jobs:
-  publish:
+  open-vsx:
+    needs: npm
     runs-on: ubuntu-latest
-    environment: vscode-marketplace-release
+    environment: open-vsx-release
     permissions:
       contents: read
     steps:
@@ -255,14 +393,30 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
+          package-manager-cache: false
       - run: npm ci
-      - run: npm run release:vscode:publish
+      - run: npm run release:open-vsx:publish
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
 ```
 
-## 3. Shared Pre-Release Checks
+When npm trusted publishing is active, remove the `NODE_AUTH_TOKEN` environment
+variable from the npm publish step and delete the `NPM_TOKEN` environment
+secret. Keep `permissions.id-token: write`.
+
+To automate VS Code Marketplace later, add a `vscode` job that depends on
+`npm`, uses environment `vscode-marketplace-release`, and runs
+`npm run release:vscode:publish` with `VSCE_PAT`.
+
+References:
+
+- npm trusted publishing: `https://docs.npmjs.com/trusted-publishers`
+- npm `trust` command constraints: `https://docs.npmjs.com/cli/v11/commands/npm-trust/`
+- VS Code extension CI publishing: `https://code.visualstudio.com/api/working-with-extensions/continuous-integration`
+- Open VSX CLI: `https://www.npmjs.com/package/ovsx`
+- GitHub Actions secrets and environments: `https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions`
+
+## 4. Shared Pre-Release Checks
 
 Run the full local gate before publishing:
 
@@ -293,7 +447,7 @@ includes compiled `dist/` files, type declarations, the public
 The generated `.vsix` should be installed locally in Cursor or VS Code and
 smoke-tested before marketplace publication.
 
-## 4. Core npm Package Release
+## 5. Core npm Package Release
 
 Release the npm package before the editor extension.
 
@@ -342,7 +496,7 @@ Release the npm package before the editor extension.
 
 Do not publish the extension before this verification passes.
 
-## 5. VS Code/Cursor Extension Release
+## 6. VS Code/Cursor Extension Release
 
 Release the editor extension after the npm package is available.
 
@@ -383,13 +537,21 @@ Release the editor extension after the npm package is available.
    - Confirm saving an AsciiDoc file triggers lint only when
      `asciidoclint.run` is `onSave`.
 
-6. Publish to the VS Code Marketplace.
+6. Publish to the VS Code Marketplace manually.
 
-   ```bash
-   npm run release:vscode:publish
+   Open:
+
+   ```text
+   https://marketplace.visualstudio.com/manage/publishers/f33lgood
    ```
 
-7. Optionally publish to Open VSX for broader editor compatibility.
+   Click **New extension**, choose **Visual Studio Code**, upload the generated
+   `.vsix`, review the metadata, and publish.
+
+   Use `npm run release:vscode:publish` only after optional `VSCE_PAT`
+   automation is configured.
+
+7. Publish to Open VSX for broader editor compatibility.
 
    ```bash
    npm run release:open-vsx:publish
@@ -438,7 +600,7 @@ Use this checklist for each release branch or release candidate:
 - [ ] Name availability rechecked and selected identifiers recorded.
 - [ ] npm account, organization/scope if used, 2FA/token/trusted publishing, and
       publish access are ready.
-- [ ] VS Code Marketplace publisher and `VSCE_PAT` or `vsce login` are ready.
+- [ ] VS Code Marketplace publisher access is ready for manual `.vsix` upload.
 - [ ] Public docs contain no private project names or sensitive paths.
 - [ ] Rule docs exist for every built-in `AD###` rule.
 - [ ] Experimental custom rules have docs that state necessity, rationale, bad

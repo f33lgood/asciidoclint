@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/f33lgood/asciidoclint.git"
+    "url": "git+https://github.com/f33lgood/asciidoclint.git"
   },
   "bugs": {
     "url": "https://github.com/f33lgood/asciidoclint/issues"
@@ -25,7 +25,7 @@
     "packages/*"
   ],
   "bin": {
-    "asciidoclint": "./dist/cli/index.js"
+    "asciidoclint": "dist/cli/index.js"
   },
   "exports": {
     ".": {
