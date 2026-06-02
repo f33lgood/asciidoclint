@@ -3,11 +3,16 @@ import { ruleLabel } from "../rules/builtin.js";
 import type { LintFinding, LintResult } from "../types.js";
 
 export function formatPretty(result: LintResult): string {
-  if (result.findings.length === 0) {
+  const activeFindings = result.findings.filter((finding) => !finding.waived);
+  const waived = result.findings.length - activeFindings.length;
+  if (activeFindings.length === 0) {
+    if (waived) {
+      return `0 findings (${waived} waived)`;
+    }
     return "0 findings";
   }
   const lines: string[] = [];
-  for (const finding of result.findings) {
+  for (const finding of activeFindings) {
     lines.push(primaryLine(finding));
     if (finding.context) {
       lines.push(`  ${finding.context}`);
@@ -17,7 +22,7 @@ export function formatPretty(result: LintResult): string {
     }
     lines.push("");
   }
-  const summary = result.findings.reduce(
+  const summary = activeFindings.reduce(
     (counts, finding) => {
       counts.total += 1;
       counts[finding.severity] += 1;
@@ -31,7 +36,7 @@ export function formatPretty(result: LintResult): string {
     },
     { total: 0, error: 0, warning: 0, info: 0, safe: 0, unsafe: 0 },
   );
-  lines.push(`${summary.total} findings: ${summary.error} errors, ${summary.warning} warnings, ${summary.info} info`);
+  lines.push(`${summary.total} findings: ${summary.error} errors, ${summary.warning} warnings, ${summary.info} info${waived ? ` (${waived} waived)` : ""}`);
   if (summary.safe) {
     lines.push(`${summary.safe} safe fixes available; run with --fix to apply them`);
   }

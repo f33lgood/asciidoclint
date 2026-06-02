@@ -8,7 +8,7 @@ import type { Rule } from "../types.js";
 describe("rule registry", () => {
   it("validates built-in rule metadata", () => {
     expect(() => validateRules(builtInRules)).not.toThrow();
-    expect(builtInRules).toHaveLength(38);
+    expect(builtInRules).toHaveLength(46);
   });
 
   it("has a rule documentation page for every built-in rule", () => {
@@ -29,6 +29,15 @@ describe("rule registry", () => {
     }
     expect(report).toContain("the structure can break or materially change AsciiDoc rendering");
     expect(report).toContain("Severity is assigned from rendering impact");
+  });
+
+  it("keeps waiver diagnostic IDs in the built-in rule contract", () => {
+    const waiverIds = ["ADW01", "ADW02", "ADW03", "ADW04", "ADW05", "ADW06", "ADW07", "ADW08"];
+    const builtInIds = new Set(builtInRules.map((rule) => rule.id));
+
+    for (const id of waiverIds) {
+      expect(builtInIds.has(id), `${id} should have built-in rule metadata`).toBe(true);
+    }
   });
 
   it("rejects duplicate aliases", () => {

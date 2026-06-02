@@ -28,9 +28,10 @@ import {
 const settings: ExtensionSettings = {
   enable: true,
   run: "onSave",
-  config: ".asciidoclint.yaml",
+  config: ".asciidoclint/config.yaml",
   customRules: ["./rules/no-todo.js", "org-rules"],
   hiddenRules: [],
+  showWaived: false,
   unsafeFixes: false,
   importCliDiagnostics: true,
 };
@@ -51,7 +52,7 @@ describe("VS Code asciidoclint linting helpers", () => {
 
     expect(target.patterns).toEqual(["/repo/docs/index.adoc"]);
     expect(target.cwd).toBe("/repo");
-    expect(target.configFile).toBe(path.join("/repo", ".asciidoclint.yaml"));
+    expect(target.configFile).toBe(path.join("/repo", ".asciidoclint/config.yaml"));
     expect(target.customRules).toEqual([path.join("/repo", "rules/no-todo.js"), "org-rules"]);
   });
 
@@ -106,13 +107,13 @@ describe("VS Code asciidoclint linting helpers", () => {
     await runLint(api, {
       patterns: ["doc.adoc"],
       cwd: "/repo",
-      configFile: "/repo/.asciidoclint.yaml",
+      configFile: "/repo/.asciidoclint/config.yaml",
       customRules: [],
     }, true, false);
 
     expect(api.lintFiles).toHaveBeenCalledWith(["doc.adoc"], {
       cwd: "/repo",
-      configFile: "/repo/.asciidoclint.yaml",
+      configFile: "/repo/.asciidoclint/config.yaml",
       customRules: [],
       fix: true,
       unsafeFixes: false,
@@ -128,7 +129,7 @@ describe("VS Code asciidoclint linting helpers", () => {
     await runLint(api, {
       patterns: ["index.adoc"],
       cwd: "/repo",
-      configFile: "/repo/.asciidoclint.yaml",
+      configFile: "/repo/.asciidoclint/config.yaml",
       customRules: [],
     }, false, false, ".asciidoclint/diagnostics.json");
 
@@ -182,6 +183,48 @@ describe("VS Code asciidoclint linting helpers", () => {
     expect(filterEditorFindings(findings, ["asciidoctor-diagnostic"]).map((finding) => finding.ruleId)).toEqual(["AD034", "AD001"]);
   });
 
+  it("hides waived findings from editor diagnostics by default", () => {
+    const findings = [
+      finding("/repo/doc.adoc", "AD001"),
+      {
+        ...finding("/repo/doc.adoc", "AD023"),
+        waived: true,
+        waiver: {
+          file: "/repo/doc.adoc",
+          line: 1,
+          column: 1,
+          directive: "disable-next-line",
+          rules: ["AD023"],
+        },
+      },
+    ];
+
+    expect(filterEditorFindings(findings, []).map((finding) => finding.ruleId)).toEqual(["AD001"]);
+  });
+
+  it("can show waived findings as non-blocking diagnostics", () => {
+    const waived = {
+      ...finding("/repo/doc.adoc", "AD023"),
+      waived: true,
+      waiver: {
+        file: "/repo/doc.adoc",
+        line: 1,
+        column: 1,
+        directive: "disable-next-line",
+        rules: ["AD023"],
+        reason: "intentional placeholder",
+      },
+    };
+
+    expect(filterEditorFindings([waived], [], true).map((finding) => finding.ruleId)).toEqual(["AD023"]);
+
+    const diagnostic = toDiagnostic(fakeVscodeApi(), waived);
+    expect(diagnostic.message).toContain("[WAIVED]");
+    expect(diagnostic.severity).toBe(2);
+    expect(diagnostic.tags).toEqual([1]);
+    expect(diagnostic.relatedInformation?.[0]?.message).toContain("intentional placeholder");
+  });
+
   it("accepts diagnostics artifacts generated from a different cwd when findings are inside the workspace", () => {
     const artifact = {
       cwd: "/repo/tool-source",
@@ -233,7 +276,7 @@ describe("VS Code asciidoclint linting helpers", () => {
     expect(decideEditorTrigger("workspace-open", settings).traverseGraph).toBe(true);
     expect(decideEditorTrigger("document-create", settings, "/repo/chapter.adoc").lint).toBe(false);
     expect(decideEditorTrigger("document-create", settings, "/repo/chapter.adoc").traverseGraph).toBe(true);
-    expect(decideEditorTrigger("config-change", settings, "/repo/.asciidoclint.yaml")).toMatchObject({
+    expect(decideEditorTrigger("config-change", settings, "/repo/.asciidoclint/config.yaml")).toMatchObject({
       lint: false,
       traverseGraph: true,
       importDiagnostics: true,
@@ -250,7 +293,7 @@ describe("VS Code asciidoclint linting helpers", () => {
   });
 
   it("recognizes config and diagnostics artifact paths", () => {
-    expect(isConfigPath("/repo/.asciidoclint.yaml", "/repo", settings)).toBe(true);
+    expect(isConfigPath("/repo/.asciidoclint/config.yaml", "/repo", settings)).toBe(true);
     expect(isConfigPath("/repo/other.yaml", "/repo", settings)).toBe(false);
     expect(isDiagnosticsArtifactPath("/repo/.asciidoclint/diagnostics.json", "/repo")).toBe(true);
     expect(isDiagnosticsArtifactPath("/repo/diagnostics.json", "/repo")).toBe(false);
@@ -318,15 +361,28 @@ function fakeVscodeApi(): any {
   class Diagnostic {
     source?: string;
     code?: string;
+    tags?: number[];
+    relatedInformation?: Array<{ location: unknown; message: string }>;
     constructor(public range: Range, public message: string, public severity: number) {}
+  }
+  class Location {
+    constructor(public uri: unknown, public range: Range) {}
+  }
+  class DiagnosticRelatedInformation {
+    constructor(public location: Location, public message: string) {}
   }
   return {
     Diagnostic,
+    DiagnosticRelatedInformation,
     DiagnosticSeverity: {
       Error: 0,
       Warning: 1,
       Information: 2,
     },
+    DiagnosticTag: {
+      Unnecessary: 1,
+    },
+    Location,
     Position,
     Range,
     Uri: {

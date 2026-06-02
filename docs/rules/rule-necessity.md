@@ -64,6 +64,14 @@ Severity is assigned from rendering impact:
 | `AD043/section-title-start-left` | warning | no | source scanner for indented equal-sign and hash section-title markers | Asciidoctor treats indented section-title-looking lines as literal content, not as sections. This is valid AsciiDoc and can be intentional example text, so the rule is a warning. It catches likely lost section structure that would disappear from the outline, table of contents, and generated IDs. |
 | `AD044/local-adoc-link` | warning | unsafe | source scanner for unescaped local link macro targets, excluding protected blocks | Asciidoctor documents `link:` for relative non-AsciiDoc files and `xref:` for relative AsciiDoc files. `link:chapter.adoc[]` renders a literal source-file link, while `xref:chapter.adoc[]` is rewritten to the converted output target. |
 | `AD045/markdown-heading-mix` | info | unsafe | source scanner for heading marker style, checked against Asciidoctor-supported heading parsing | Asciidoctor supports Markdown-compatible `#` headings, so using them is valid. Mixing `#` and `=` heading marker families in one document graph is a maintainability issue because authors must normalize two source heading systems while reviewing one rendered hierarchy. |
+| `ADW01/unknown-waiver-directive` | warning | no | waiver parser | Unknown waiver directives are ignored by the waiver parser, so the author may believe a finding is waived when no supported waiver was applied. |
+| `ADW02/missing-waiver-rule-list` | warning | no | waiver parser | Waivers without rule lists have unclear intent and can be mistaken for broad disables. Rule-ID scoped waivers keep suppression auditable. |
+| `ADW03/malformed-waiver-rule-list` | warning | no | waiver parser | Malformed rule lists cannot be interpreted reliably, so the waiver parser reports them instead of guessing author intent. |
+| `ADW04/unknown-waiver-rule-id` | warning | no | waiver parser plus rule registry | Unknown rule IDs make waivers ineffective and can hide typos in waiver exceptions. |
+| `ADW05/unpaired-waiver-enable-block` | warning | no | waiver parser | An `enable-block` with no preceding active `disable-block` closes no waiver range and usually indicates a misplaced or deleted block start. |
+| `ADW06/unpaired-waiver-disable-block` | warning | no | waiver parser | A `disable-block` with no following `enable-block` applies through EOF and can waive more findings than intended. |
+| `ADW07/mismatched-waiver-block-rule-list` | warning | no | waiver parser | Mismatched block rule lists make waiver ranges ambiguous and harder to audit. |
+| `ADW08/waiver-targets-waiver-rule` | warning | no | waiver parser | Waiver syntax diagnostics protect the waiver system and must not be suppressible by source waivers. |
 
 ## Reference Tool Role
 

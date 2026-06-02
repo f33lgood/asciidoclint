@@ -1,18 +1,19 @@
-# asciidoclint for VS Code/Cursor
+# asciidoclint for VS Code-Compatible Editors
 
 This extension surfaces `asciidoclint` findings as editor diagnostics for
-AsciiDoc files.
+AsciiDoc files in VS Code and editors compatible with VS Code's diagnostic
+model. It can be distributed through the VS Code Marketplace or Open VSX.
 
 ## Features
 
 - Lints `.adoc`, `.asciidoc`, and `.asc` files.
 - Shows `AD###/alias` diagnostics in the Problems panel.
-- Reuses `.asciidoclint.yaml` and custom rule modules from the workspace.
+- Reuses `.asciidoclint/config.yaml` and custom rule modules from the workspace.
 - Can hide noisy rule IDs or aliases from editor diagnostics, such as `AD000`.
 - Provides commands to lint workspace document roots and apply safe fixes to
   workspace document roots.
 - Imports `.asciidoclint/diagnostics.json` when present, so CLI lint results can
-  be viewed in VS Code/Cursor.
+  be viewed in compatible editors.
 
 Opening or clicking a file does not run lint by itself. The extension imports
 existing CLI diagnostics on activation and watches the diagnostics artifact.
@@ -25,7 +26,7 @@ back to the source files. Included fragments should normally be linted through
 their owning document context, not as standalone documents.
 
 `asciidoclint: Lint Workspace` uses configured `documents` from
-`.asciidoclint.yaml` when present. Otherwise it uses a conventional root such as
+`.asciidoclint/config.yaml` when present. Otherwise it uses a conventional root such as
 `index.adoc`, `master.adoc`, or `README.adoc`. If no conventional root exists
 and multiple top-level AsciiDoc files are present, it prompts for the document
 root to lint instead of linting every top-level file.
@@ -45,16 +46,19 @@ enabled.
 
 ## Settings
 
+These settings belong in VS Code-compatible user or workspace settings, such as
+`.vscode/settings.json`. They do not belong in `.asciidoclint/config.yaml`,
+which is reserved for lint policy, custom rules, ignores, and document roots.
+
 ```json
 {
   "asciidoclint.enable": true,
   "asciidoclint.run": "onSave",
-  "asciidoclint.defaultScope": "document",
-  "asciidoclint.config": ".asciidoclint.yaml",
+  "asciidoclint.config": ".asciidoclint/config.yaml",
   "asciidoclint.customRules": [],
   "asciidoclint.hiddenRules": [],
+  "asciidoclint.showWaived": false,
   "asciidoclint.unsafeFixes": false,
-  "asciidoclint.followSymlinks": false,
   "asciidoclint.importCliDiagnostics": true
 }
 ```
@@ -65,10 +69,16 @@ enabled.
 imported CLI artifact, but the extension does not publish them to the Problems
 panel.
 
+Waived findings are hidden from editor diagnostics by default. Set
+`asciidoclint.showWaived` to `true` to show them as non-blocking diagnostics
+with a `[WAIVED]` prefix and related information pointing to the waiver
+directive.
+
 ## CLI Diagnostics Import
 
-VS Code/Cursor cannot observe arbitrary external CLI diagnostics unless an
-extension imports them. The proposed integration is an opt-in diagnostics file:
+VS Code-compatible editors cannot observe arbitrary external CLI diagnostics
+unless an extension imports them. The proposed integration is an opt-in
+diagnostics file:
 
 ```bash
 asciidoclint --format json \

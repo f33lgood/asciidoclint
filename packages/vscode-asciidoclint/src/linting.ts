@@ -14,6 +14,7 @@ export interface ExtensionSettings {
   config: string;
   customRules: string[];
   hiddenRules: string[];
+  showWaived: boolean;
   unsafeFixes: boolean;
   importCliDiagnostics: boolean;
 }
@@ -112,7 +113,7 @@ export function isAsciiDocPath(file: string): boolean {
 }
 
 export function isConfigPath(file: string, workspaceRoot: string, settings: ExtensionSettings): boolean {
-  return path.resolve(file) === path.resolve(resolveOptionalPath(settings.config, workspaceRoot) ?? path.join(workspaceRoot, ".asciidoclint.yaml"));
+  return path.resolve(file) === path.resolve(resolveOptionalPath(settings.config, workspaceRoot) ?? path.join(workspaceRoot, ".asciidoclint/config.yaml"));
 }
 
 export function isDiagnosticsArtifactPath(file: string, workspaceRoot: string): boolean {
@@ -245,16 +246,19 @@ export async function runLint(api: AsciidoclintApi, target: LintTarget, fix = fa
   });
 }
 
-export function updateDiagnostics(collection: DiagnosticCollection, vscodeApi: Pick<typeof import("vscode"), "Diagnostic" | "DiagnosticSeverity" | "Position" | "Range" | "Uri">, findings: LintFinding[]): void {
+type VscodeDiagnosticApi = Pick<typeof import("vscode"), "Diagnostic" | "DiagnosticRelatedInformation" | "DiagnosticSeverity" | "DiagnosticTag" | "Location" | "Position" | "Range" | "Uri">;
+
+export function updateDiagnostics(collection: DiagnosticCollection, vscodeApi: VscodeDiagnosticApi, findings: LintFinding[]): void {
   publishDiagnostics(collection, vscodeApi, findings, { clear: true });
 }
 
-export function filterEditorFindings(findings: LintFinding[], hiddenRules: string[]): LintFinding[] {
+export function filterEditorFindings(findings: LintFinding[], hiddenRules: string[], showWaived = false): LintFinding[] {
+  const activeFindings = findings.filter((finding) => showWaived || !finding.waived);
   if (!hiddenRules.length) {
-    return findings;
+    return activeFindings;
   }
   const hidden = new Set(hiddenRules.map((rule) => rule.toLowerCase()));
-  return findings.filter((finding) => !hidden.has(finding.ruleId.toLowerCase()) && !(finding.alias && hidden.has(finding.alias.toLowerCase())));
+  return activeFindings.filter((finding) => !hidden.has(finding.ruleId.toLowerCase()) && !(finding.alias && hidden.has(finding.alias.toLowerCase())));
 }
 
 export function filterFindingsInsideWorkspace(findings: LintFinding[], workspaceFolder: WorkspaceFolder): LintFinding[] {
@@ -262,13 +266,13 @@ export function filterFindingsInsideWorkspace(findings: LintFinding[], workspace
   return findings.filter((finding) => isInsideOrEqual(path.resolve(finding.range.start.file), root));
 }
 
-export function replaceAllDiagnostics(collection: DiagnosticCollection, vscodeApi: Pick<typeof import("vscode"), "Diagnostic" | "DiagnosticSeverity" | "Position" | "Range" | "Uri">, findings: LintFinding[]): void {
+export function replaceAllDiagnostics(collection: DiagnosticCollection, vscodeApi: VscodeDiagnosticApi, findings: LintFinding[]): void {
   publishDiagnostics(collection, vscodeApi, findings, { clear: true });
 }
 
 export function updateDiagnosticsForFiles(
   collection: DiagnosticCollection,
-  vscodeApi: Pick<typeof import("vscode"), "Diagnostic" | "DiagnosticSeverity" | "Position" | "Range" | "Uri">,
+  vscodeApi: VscodeDiagnosticApi,
   files: string[],
   findings: LintFinding[],
 ): void {
@@ -282,7 +286,7 @@ interface DiagnosticPublishOptions {
 
 function publishDiagnostics(
   collection: DiagnosticCollection,
-  vscodeApi: Pick<typeof import("vscode"), "Diagnostic" | "DiagnosticSeverity" | "Position" | "Range" | "Uri">,
+  vscodeApi: VscodeDiagnosticApi,
   findings: LintFinding[],
   options: DiagnosticPublishOptions = {},
 ): void {
@@ -296,7 +300,7 @@ function publishDiagnostics(
 }
 
 function groupDiagnosticsByFile(
-  vscodeApi: Pick<typeof import("vscode"), "Diagnostic" | "DiagnosticSeverity" | "Position" | "Range" | "Uri">,
+  vscodeApi: VscodeDiagnosticApi,
   findings: LintFinding[],
   scopeFiles: string[] = [],
 ): Map<string, Diagnostic[]> {
@@ -362,18 +366,30 @@ export function staleArtifactReasons(artifact: DiagnosticsArtifact): string[] {
   return reasons;
 }
 
-export function toDiagnostic(vscodeApi: Pick<typeof import("vscode"), "Diagnostic" | "DiagnosticSeverity" | "Position" | "Range">, finding: LintFinding): Diagnostic {
+export function toDiagnostic(vscodeApi: VscodeDiagnosticApi, finding: LintFinding): Diagnostic {
   const start = new vscodeApi.Position(Math.max(0, finding.range.start.line - 1), Math.max(0, finding.range.start.column - 1));
   const end = finding.range.end
     ? new vscodeApi.Position(Math.max(0, finding.range.end.line - 1), Math.max(0, finding.range.end.column - 1))
     : new vscodeApi.Position(start.line, start.character + 1);
+  const messagePrefix = finding.waived ? "[WAIVED] " : "";
   const diagnostic = new vscodeApi.Diagnostic(
     new vscodeApi.Range(start, end),
-    [`${ruleLabel(finding)} ${finding.message}`, finding.fixHelper ? `Fix helper: ${finding.fixHelper}` : undefined].filter(Boolean).join("\n"),
-    toDiagnosticSeverity(vscodeApi, finding.severity),
+    [`${messagePrefix}${ruleLabel(finding)} ${finding.message}`, finding.fixHelper ? `Fix helper: ${finding.fixHelper}` : undefined].filter(Boolean).join("\n"),
+    finding.waived ? vscodeApi.DiagnosticSeverity.Information : toDiagnosticSeverity(vscodeApi, finding.severity),
   );
   diagnostic.source = "asciidoclint";
   diagnostic.code = finding.alias ? `${finding.ruleId}/${finding.alias}` : finding.ruleId;
+  if (finding.waived && finding.waiver) {
+    diagnostic.tags = [vscodeApi.DiagnosticTag.Unnecessary];
+    const waiverStart = new vscodeApi.Position(Math.max(0, finding.waiver.line - 1), Math.max(0, finding.waiver.column - 1));
+    const waiverRange = new vscodeApi.Range(waiverStart, new vscodeApi.Position(waiverStart.line, waiverStart.character + 1));
+    diagnostic.relatedInformation = [
+      new vscodeApi.DiagnosticRelatedInformation(
+        new vscodeApi.Location(vscodeApi.Uri.file(finding.waiver.file), waiverRange),
+        `Waived by ${finding.waiver.directive}${finding.waiver.reason ? `: ${finding.waiver.reason}` : ""}`,
+      ),
+    ];
+  }
   return diagnostic;
 }
 

@@ -2,7 +2,7 @@
   "name": "asciidoclint",
   "displayName": "asciidoclint",
   "description": "AsciiDoc lint diagnostics powered by asciidoclint",
-  "version": "0.5.0",
+  "version": "1.0.0",
   "publisher": "f33lgood",
   "icon": "media/icon.png",
   "author": "Shawn Hu",
@@ -95,7 +95,7 @@
         },
         "asciidoclint.config": {
           "type": "string",
-          "default": ".asciidoclint.yaml",
+          "default": ".asciidoclint/config.yaml",
           "description": "Path to asciidoclint configuration, relative to the workspace folder unless absolute."
         },
         "asciidoclint.customRules": {
@@ -113,6 +113,11 @@
           },
           "default": [],
           "description": "Rule IDs or aliases to hide from editor diagnostics, for example AD000 or asciidoctor-diagnostic."
+        },
+        "asciidoclint.showWaived": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show waived findings as non-blocking editor diagnostics. Waived findings are hidden by default."
         },
         "asciidoclint.unsafeFixes": {
           "type": "boolean",

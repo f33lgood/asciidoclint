@@ -4,12 +4,13 @@ import os from "node:os";
 import { describe, expect, it } from "vitest";
 import { lintFiles } from "./lint.js";
 import { parseDocument } from "../parsers/tolerant.js";
+import { builtInRules } from "../rules/builtin.js";
 import { getVersion } from "../version.js";
 
 const apiFixture = (name: string) => path.resolve("test", "fixtures", "api", name);
 const ruleFixture = (rule: string, name: string) => path.resolve("test", "fixtures", "rules", rule, name);
-const customRuleFixture = (name: string) => path.resolve("test", "fixtures", "custom-rules", "src", name);
-const customRuleFixtures = () => fs.readdirSync(path.resolve("test", "fixtures", "custom-rules", "src"))
+const customRuleFixture = (name: string) => path.resolve("test", "fixtures", "experimental-custom-rules", "src", name);
+const customRuleFixtures = () => fs.readdirSync(path.resolve("test", "fixtures", "experimental-custom-rules", "src"))
   .filter((file) => /^ORG\d{3}-.+\.ts$/.test(file))
   .sort()
   .map(customRuleFixture);
@@ -96,7 +97,8 @@ describe("lintFiles", () => {
   it("applies config severity overrides and rule disables", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-config-"));
     const doc = path.join(directory, "bad.adoc");
-    const config = path.join(directory, ".asciidoclint.yaml");
+    const config = path.join(directory, ".asciidoclint", "config.yaml");
+    fs.mkdirSync(path.dirname(config), { recursive: true });
     fs.writeFileSync(doc, "= Title\n\n=== Skipped\n");
     fs.writeFileSync(config, "rules:\n  heading-level-progression:\n    severity: error\n  AD002: false\n");
 
@@ -246,6 +248,169 @@ describe("lintFiles", () => {
     const after = await lintFiles([doc], { cwd: directory, fix: true });
     expect(fs.readFileSync(doc, "utf8")).toContain("Paragraph before list\n\n* item");
     expect(after.findings.some((item) => item.ruleId === "AD008")).toBe(false);
+  });
+
+  it("marks next-line waivers and preserves waiver metadata", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-waiver-next-line-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "// asciidoclint disable-next-line AD023 -- intentional placeholder",
+      "== Reserved",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const finding = result.findings.find((item) => item.ruleId === "AD023");
+
+    expect(finding?.waived).toBe(true);
+    expect(finding?.waiver).toMatchObject({
+      file: doc,
+      line: 3,
+      column: 1,
+      directive: "disable-next-line",
+      rules: ["AD023"],
+      reason: "intentional placeholder",
+    });
+  });
+
+  it("marks block waivers and leaves included-file findings active", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-waiver-block-"));
+    const doc = path.join(directory, "doc.adoc");
+    const chapter = path.join(directory, "chapter.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "// asciidoclint disable-block AD023 -- local placeholders",
+      "== Reserved",
+      "",
+      "== Next",
+      "",
+      "content",
+      "// asciidoclint enable-block AD023",
+      "",
+      "include::chapter.adoc[]",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(chapter, [
+      "== Included Placeholder",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const local = result.findings.find((item) => item.ruleId === "AD023" && item.range.start.file === doc);
+    const included = result.findings.find((item) => item.ruleId === "AD023" && item.range.start.file === chapter);
+
+    expect(local?.waived).toBe(true);
+    expect(local?.waiver?.directive).toBe("disable-block");
+    expect(included?.waived).toBeUndefined();
+  });
+
+  it("reports waiver diagnostics and does not allow waiving waiver diagnostics", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-waiver-diagnostics-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "// asciidoclint disable AD023",
+      "// asciidoclint disable-next-line",
+      "// asciidoclint disable-next-line AD023 AD014",
+      "// asciidoclint disable-next-line AD999",
+      "// asciidoclint enable-block AD023",
+      "// asciidoclint disable-block AD023",
+      "== Empty",
+      "// asciidoclint enable-block AD034",
+      "// asciidoclint disable-next-line ADW01",
+      "== Empty Too",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const ids = result.findings.map((finding) => finding.ruleId);
+
+    expect(ids).toContain("ADW01");
+    expect(ids).toContain("ADW02");
+    expect(ids).toContain("ADW03");
+    expect(ids).toContain("ADW04");
+    expect(ids).toContain("ADW05");
+    expect(ids).toContain("ADW07");
+    expect(ids).toContain("ADW08");
+    expect(result.findings.find((finding) => finding.ruleId === "ADW08")?.waived).toBeUndefined();
+  });
+
+  it("keeps waiver diagnostic aliases aligned with built-in rule metadata", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-waiver-aliases-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "// asciidoclint disable AD023",
+      "// asciidoclint disable-next-line",
+      "// asciidoclint disable-next-line AD023 AD014",
+      "// asciidoclint disable-next-line AD999",
+      "// asciidoclint enable-block AD023",
+      "// asciidoclint disable-block AD023",
+      "== Empty",
+      "// asciidoclint enable-block AD034",
+      "// asciidoclint disable-next-line ADW01",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const aliasesByRule = new Map(builtInRules.map((rule) => [rule.id, rule.alias]));
+
+    for (const finding of result.findings.filter((item) => item.ruleId.startsWith("ADW"))) {
+      expect(finding.alias).toBe(aliasesByRule.get(finding.ruleId));
+    }
+  });
+
+  it("reports waiver diagnostics even when ADW rules are disabled in config", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-waiver-always-on-"));
+    const doc = path.join(directory, "doc.adoc");
+    const config = path.join(directory, ".asciidoclint", "config.yaml");
+    fs.mkdirSync(path.dirname(config), { recursive: true });
+    fs.writeFileSync(doc, "// asciidoclint enable-block AD023\n");
+    fs.writeFileSync(config, "rules:\n  ADW05: false\n");
+
+    const result = await lintFiles([doc], { cwd: directory, configFile: config });
+    const finding = result.findings.find((item) => item.ruleId === "ADW05");
+
+    expect(finding?.alias).toBe("unpaired-waiver-enable-block");
+  });
+
+  it("reports unpaired disable-block and applies it through EOF", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-waiver-unpaired-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "// asciidoclint disable-block AD023",
+      "== Empty",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+
+    expect(result.findings.find((finding) => finding.ruleId === "AD023")?.waived).toBe(true);
+    expect(result.findings.some((finding) => finding.ruleId === "ADW06")).toBe(true);
+  });
+
+  it("does not apply fixes for waived findings", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-waiver-fix-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "// asciidoclint disable-next-line AD034 -- generated tabbed content",
+      "*\tTabbed list item",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory, fix: true });
+
+    expect(result.findings.find((finding) => finding.ruleId === "AD034")?.waived).toBe(true);
+    expect(fs.readFileSync(doc, "utf8")).toContain("*\tTabbed list item");
   });
 
   it("reports blank-before-block as an error when Asciidoctor can parse the delimiter as a section underline", async () => {
@@ -511,7 +676,8 @@ describe("lintFiles", () => {
     const kept = path.join(directory, "kept.adoc");
     const ignoredDirectory = path.join(directory, "build");
     const ignored = path.join(ignoredDirectory, "ignored.adoc");
-    const config = path.join(directory, ".asciidoclint.yaml");
+    const config = path.join(directory, ".asciidoclint", "config.yaml");
+    fs.mkdirSync(path.dirname(config), { recursive: true });
     fs.mkdirSync(ignoredDirectory);
     fs.writeFileSync(kept, "= Title\n\nimage::missing.png[]\n\n=== Skipped\n");
     fs.writeFileSync(ignored, "= Title\n\nimage::ignored-missing.png[]\n");

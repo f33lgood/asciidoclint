@@ -8,7 +8,7 @@ Chronological release order:
 1. Study name availability and decide the public identifiers.
 2. Register or verify publishing accounts and registry ownership.
 3. Release the core npm package.
-4. Release the VS Code/Cursor extension that consumes the released core.
+4. Release the VS Code-compatible extension that consumes the released core.
 
 The core package is the source of truth for parsing, rules, configuration,
 custom-rule loading, fixes, and CLI behavior. The editor extension should stay
@@ -20,7 +20,7 @@ artifacts, applies safe fixes, and exposes rule explanations.
 | Artifact | Package | Registry | Purpose |
 | --- | --- | --- | --- |
 | Core package | `asciidoclint` | npm | CLI, API, built-in rules, custom-rule loader, fix engine, and bundled `skills/asciidoclint` skill. |
-| Editor extension | `f33lgood.asciidoclint` | VS Code Marketplace and Open VSX | VS Code/Cursor diagnostics, commands, safe fixes, rule explanations, CLI diagnostic import. |
+| Editor extension | `f33lgood.asciidoclint` | VS Code Marketplace and Open VSX | VS Code-compatible diagnostics, commands, safe fixes, rule explanations, CLI diagnostic import. |
 
 Planned public identifiers:
 
@@ -159,9 +159,8 @@ Publishing to Open VSX requires:
 - Access to namespace `f33lgood`.
 - An Open VSX access token for CI publishing.
 
-Create or claim the `f33lgood` namespace before release so Cursor,
-VSCodium, Theia, and other Open VSX-backed editors can install
-`f33lgood.asciidoclint`.
+Create or claim the `f33lgood` namespace before release so Open VSX-backed
+editors can install `f33lgood.asciidoclint`.
 
 Prefer manual VS Code Marketplace upload for the first release. `VSCE_PAT`
 automation is optional because it depends on Azure DevOps PAT creation for a
@@ -444,8 +443,8 @@ npm run release:vscode:package
 includes compiled `dist/` files, type declarations, the public
 `skills/asciidoclint` skill, and no private test input.
 
-The generated `.vsix` should be installed locally in Cursor or VS Code and
-smoke-tested before marketplace publication.
+The generated `.vsix` should be installed locally in a VS Code-compatible editor
+and smoke-tested before marketplace publication.
 
 ## 5. Core npm Package Release
 
@@ -496,7 +495,7 @@ Release the npm package before the editor extension.
 
 Do not publish the extension before this verification passes.
 
-## 6. VS Code/Cursor Extension Release
+## 6. VS Code-Compatible Extension Release
 
 Release the editor extension after the npm package is available.
 
@@ -518,13 +517,7 @@ Release the editor extension after the npm package is available.
 4. Install the generated `.vsix` locally.
 
    ```bash
-   code --install-extension packages/vscode-asciidoclint/asciidoclint-0.5.0.vsix --force
-   ```
-
-   For Cursor:
-
-   ```bash
-   cursor --install-extension packages/vscode-asciidoclint/asciidoclint-0.5.0.vsix --force
+   code --install-extension packages/vscode-asciidoclint/asciidoclint-<version>.vsix --force
    ```
 
 5. Smoke-test editor behavior in a separate workspace.
@@ -557,8 +550,7 @@ Release the editor extension after the npm package is available.
    npm run release:open-vsx:publish
    ```
 
-Cursor can install VS Code Marketplace extensions and local `.vsix` files. Open
-VSX is useful for editors that do not use the Microsoft marketplace.
+Open VSX is useful for editors that do not use the Microsoft marketplace.
 
 ## Custom-Rule Compatibility
 
@@ -605,11 +597,11 @@ Use this checklist for each release branch or release candidate:
 - [ ] Rule docs exist for every built-in `AD###` rule.
 - [ ] Experimental custom rules have docs that state necessity, rationale, bad
       example behavior, and expected good example behavior.
-- [ ] `docs/reports/` reports are regenerated and consistent with tests.
+- [ ] GitLab-only reports are regenerated and consistent with tests.
 - [ ] `npm run check` passes.
 - [ ] `npm run release:npm:dry-run` contains only intended files.
 - [ ] Clean-install npm smoke test passes.
-- [ ] `.vsix` local install smoke test passes in VS Code or Cursor.
+- [ ] `.vsix` local install smoke test passes in a VS Code-compatible editor.
 - [ ] Core package is published before the extension.
 - [ ] Extension release notes mention the tested core engine version.
 

@@ -1,4 +1,4 @@
-# Custom Rule Fixtures
+# Experimental Custom Rule Fixtures
 
 This directory contains experimental custom-rule fixtures used by the test
 suite.

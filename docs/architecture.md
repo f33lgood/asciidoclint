@@ -38,6 +38,10 @@ early process failure that hides later findings.
 5. Rule packs are separable: core AsciiDoc, document-policy, organization
    policy, and conversion-cleanup rules.
 6. Fixes are explicit about safety: safe, unsafe, or suggestion-only.
+7. Source waivers are explicit, rule-ID scoped, auditable findings metadata,
+   and are specified in [docs/waiver.md](waiver.md).
+   Waiver-system diagnostics use the `ADW##` namespace and still follow the
+   normal built-in rule metadata, documentation, and test contract.
 
 ## Rule Severity and Scope
 
@@ -117,14 +121,14 @@ The recommended implementation language is TypeScript on Node.js.
 This supports npm distribution, custom-rule packages, generated types, AI-agent
 skills, editor integrations, GitHub Actions, pre-commit hooks, browser demos,
 and language-server reuse. `asciidoclint` should start simple: one repository
-can publish the Node.js package, an installable skill, and a VS Code/Cursor
-extension, while keeping the lint engine shared. The parser baseline should remain
-Asciidoctor-compatible and hidden behind adapters.
+can publish the Node.js package, an installable skill, and a VS Code-compatible
+extension, while keeping the lint engine shared. The parser baseline should
+remain Asciidoctor-compatible and hidden behind adapters.
 
 Start as a single TypeScript package for the engine and CLI. Add the VS
-Code/Cursor extension as a workspace package when editor diagnostics become a
-release target. Split other packages only when the CLI, rule packs, or extension
-become painful to maintain in one package.
+Code-compatible extension as a workspace package when editor diagnostics become
+a release target. Split other packages only when the CLI, rule packs, or
+extension become painful to maintain in one package.
 
 Initial package shape:
 
@@ -140,7 +144,7 @@ skills/
   asciidoclint/            # installable AI-agent skill
 
 packages/
-  vscode-asciidoclint/     # VS Code/Cursor extension wrapper
+  vscode-asciidoclint/     # VS Code-compatible extension wrapper
 ```
 
 Future workspace shape, if needed:
@@ -149,7 +153,7 @@ Future workspace shape, if needed:
 packages/
   asciidoclint/           # shared engine, public API, CLI, built-in rules
   asciidoclint-skill/     # optional skill-only package, if split later
-  vscode-asciidoclint/    # VS Code/Cursor extension wrapper
+  vscode-asciidoclint/    # VS Code-compatible extension wrapper
   asciidoclint-rules/     # optional published rule packs, if needed
 ```
 
@@ -159,6 +163,10 @@ Use a rule layout adapted for AsciiDoc's project-oriented fixtures:
 
 ```text
 docs/
+  waiver.md
+  custom-rules.md
+  configuration.md
+  rule-architecture.md
   rules/
     AD001.md
     AD002.md
@@ -169,7 +177,12 @@ skills/
     SKILL.md
     references/
       result-schema.md
-      ai-fix-policy.md
+      lint-summary.md
+      agentic-fix.md
+      waivers.md
+      rule-create.md
+      rule-review.md
+      feedback.md
 
 src/
   api/
@@ -190,8 +203,8 @@ src/
 
 test/
   fixtures/
-    custom-rules/
-      docs/
+    experimental-custom-rules/
+      index.adoc
         ORG101-required-overview-section.md
         ORG102-portable-table-formatting.md
       src/
@@ -203,7 +216,7 @@ test/
         included-with-title.adoc
 ```
 
-The `test/fixtures/custom-rules/ORG###` rules are experimental fixtures. They
+The `test/fixtures/experimental-custom-rules/ORG###` rules are experimental fixtures. They
 demonstrate how custom policies can be loaded and documented, but they are not
 official `asciidoclint` extensions and should not be treated as a recommended
 policy pack.
@@ -580,253 +593,24 @@ That separation prevents dependency preflight from masking later lint findings.
 
 ## Rule API
 
-Rules should be plain TypeScript objects with AsciiDoc-specific parser data and
-config schemas.
+Rules are plain objects loaded by the shared rule registry. The important
+architectural boundary is that generic AsciiDoc behavior belongs in built-in
+`AD###` rules, while project, organization, product, or template policy belongs
+in custom-rule packages.
 
-```ts
-export interface Rule {
-  id: string;
-  alias?: string;
-  description: string;
-  tags: string[];
-  docs?: RuleDocs;
-  parser: "document" | "text" | "dependency" | "project";
-  configSchema?: JSONSchema;
-  asynchronous?: boolean;
-  function: (params: RuleParams, onError: ReportFinding) => void | Promise<void>;
-}
+Details:
 
-export interface RuleDocs {
-  summary: string;
-  url?: URL;
-  rationale?: string;
-  badExamples?: RuleExample[];
-  goodExamples?: RuleExample[];
-  fixability?: "safe" | "unsafe" | "no";
-  fixHelper?: string;
-}
-
-export interface RuleExample {
-  title?: string;
-  code: string;
-}
-```
-
-Minimal custom rule example:
-
-```ts
-import type { Rule } from "asciidoclint";
-
-export default {
-  id: "ORG001",
-  alias: "no-todo",
-  description: "TODO markers must not be committed",
-  tags: ["organization", "content"],
-  docs: {
-    summary: "Use tracked issues instead of TODO markers in committed docs.",
-    badExamples: [{ code: "This section needs TODO cleanup." }],
-    goodExamples: [{ code: "This section links to issue PROJ-123." }],
-  },
-  parser: "text",
-  function: (params, onError) => {
-    params.lines.forEach((line, index) => {
-      const column = line.indexOf("TODO");
-      if (column !== -1) {
-        onError({
-          ruleId: "ORG001",
-          message: "Remove TODO marker or convert it to a tracked issue",
-          range: {
-            start: {
-              file: params.file,
-              line: index + 1,
-              column: column + 1,
-            },
-          },
-        });
-      }
-    });
-  },
-} satisfies Rule;
-```
-
-Rule implementation checklist:
-
-- Use one file per rule: `AD###.ts` for built-ins or `ORG###-alias.ts` for
-  custom packs. Grouped files are harder to review, test, document, and map to
-  rule IDs.
-- Export one plain `Rule` object or a default rule object from each file.
-- Keep `id`, `alias`, `description`, `tags`, `parser`, and `docs.summary`
-  present. Built-ins and publishable custom rules must also include
-  `docs.rationale`, at least one bad example, and at least one good example.
-- Pick the narrowest parser surface: `text` for line/pattern rules,
-  `document` for section/block rules, `dependency` for include/image/xref
-  target rules, and `project` only when one-file context is insufficient.
-- Report precise source ranges. At minimum provide file, line, and column for
-  the start of the problem.
-- Choose severity from the `Rule Severity and Scope` policy. Built-ins must tie
-  `error` and `warning` to Asciidoctor behavior, Asciidoctor documentation, or a
-  broadly applicable document-quality failure. Custom rules must document the
-  organization or project authority behind their severity.
-- If a rule can fix content, declare fix safety and add tests for safe/unsafe
-  behavior.
-
-Rule authors should not need to understand the whole parser. Simple rules can
-use `parser: "text"` and inspect lines. Structure-aware rules can use
-`parser: "document"` and inspect normalized sections, blocks, tables, images,
-includes, and source ranges.
-
-Rule params:
-
-```ts
-export interface RuleParams {
-  file: string;
-  lines: string[];
-  document: NormalizedDocument;
-  dependencies: DependencyGraph;
-  parserDiagnostics: LintFinding[];
-  config: unknown;
-  version: string;
-  helpers: RuleHelpers;
-}
-```
-
-`id` is the primary stable identifier for output, baselines, suppressions, and
-cross-version compatibility. `alias` is the readable name for humans. A rule
-should have at most one alias to avoid ambiguity. Users may reference either the
-id or alias in configuration, suppressions, `--explain`, and CLI filters.
-
-Example: `id: "ORG001"` and `alias: "no-todo"` lets users configure either
-`ORG001: true` or `no-todo: true`, while reports can show both as
-`ORG001/no-todo`.
-
-Rules may be loaded from:
-
-- Built-in rule packs.
-- Local JavaScript/TypeScript modules.
-- npm packages or package subpaths.
-- Local paths for repo-specific rules.
-
-Example configuration for a local custom rule:
-
-```yaml
-customRules:
-  - ./lint-rules/ORG001-no-todo.ts
-  - ./lint-rules/ORG002-section-policy.ts
-  - "@example/asciidoclint-rule-pack"
-
-rules:
-  ORG001: true
-  # no-todo: true # Equivalent alias for ORG001; use one form, not both.
-```
-
-Use one extension style per project. TypeScript is the recommended authoring
-format because types make AI-generated and human-authored rules easier to
-validate. Published rule packs should ship JavaScript. Local `.ts` rules work in
-the current source/test path where the runtime has TypeScript module support.
-
-Custom rules must be loadable without modifying `asciidoclint` source. The
-loader accepts local files, package names, and arrays exported by rule packs. A
-rule pack can export:
-
-```ts
-export default [noTodoRule, sectionPolicyRule];
-```
-
-Rule IDs and aliases should be stable and namespaced when needed:
-
-- `AD001` / `heading-level-progression` for a generic AsciiDoc structure rule.
-- `AD024` / `missing-include` for dependency/include/reference validation.
-- `ABC001` / `image-alt-text` or `ORG001` / `no-todo` for organization packs.
-
-The registry must reject duplicate IDs and duplicate aliases across all loaded
-built-in and custom rules. It should also reject aliases that collide with any
-rule ID.
+- [Rule architecture](rule-architecture.md)
+- [Custom rules](custom-rules.md)
+- [Built-in rule docs](rules/)
 
 ## Rule Documentation
 
-Rule documentation should be part of the rule metadata, not only separate files.
-This makes rule meaning easy to retrieve for humans, CLI output, editor
-extensions, and AI tools.
+Rule documentation is part of the rule contract. CLI, editor, and AI-agent
+workflows all consume the same metadata and examples.
 
-Each rule should provide both inline metadata and, for built-ins or example
-custom packs, a per-rule document. The per-rule document must use this shape:
-
-````markdown
-# AD001 - heading-level-progression
-
-Tags: headings, structure
-Severity: warning
-
-Description: Section headings must not skip levels.
-
-Necessity: Explain why this rule exists without relying only on another linter.
-For built-ins, tie the rule to rendered AsciiDoc output, dependency integrity,
-navigation structure, accessibility, or a baseline technical-document quality
-contract. For custom rules, explain the organization or template policy.
-
-Rationale: Explain why the rule belongs in its chosen pack. For example, say
-why it is generic enough for built-ins or why it stays custom because it is
-style, branding, template, or publication policy.
-
-Bad:
-
-What's wrong: Explain the exact defect in the bad example.
-
-```asciidoc
-= Title
-
-=== Skipped Section
-```
-
-Good:
-
-Expected: Explain the expected syntax or structure and why it satisfies the
-rule.
-
-```asciidoc
-= Title
-
-== Section
-```
-
-Implementation note: Name the parser surface used, the important normalized
-model fields or text patterns, configuration behavior, and any known limits.
-````
-
-Required documentation fields:
-
-- primary ID and at most one alias in the heading;
-- tags and default severity;
-- `Description`;
-- `Necessity`;
-- `Rationale`;
-- `Bad` example plus `What's wrong`;
-- `Good` example plus `Expected`;
-- configuration schema and examples when configurable;
-- fix safety and fix examples when fixable;
-- `Implementation note`.
-
-Built-in rules can still have full Markdown/AsciiDoc documentation pages, but
-those pages should be generated from or validated against the rule metadata so
-the code and docs do not drift. Custom rule packages should ship the same
-metadata inline, plus optional external docs. The repository's example custom
-pack keeps executable rules in `test/fixtures/custom-rules/src/` and matching
-docs in `test/fixtures/custom-rules/docs/`; tests enforce that every custom
-fixture has this documentation shape.
-
-CLI/API examples:
-
-```bash
-asciidoclint --list-rules
-asciidoclint --explain AD001
-asciidoclint --explain heading-level-progression
-asciidoclint --explain no-todo --format json
-```
-
-`--explain` should show the rule description, rationale, examples,
-configuration schema, and fix behavior. JSON output should expose the same
-metadata so editors and AI assistants can explain findings without scraping
-documentation pages.
+Details live in [Rule architecture](rule-architecture.md) and the generated
+[built-in rule docs](rules/).
 
 ## AI Skill Distribution
 
@@ -838,7 +622,12 @@ skills/
     SKILL.md
     references/
       result-schema.md
-      ai-fix-policy.md
+      lint-summary.md
+      agentic-fix.md
+      waivers.md
+      rule-create.md
+      rule-review.md
+      feedback.md
 ```
 
 The skill is an orchestration layer over the deterministic npm package. It
@@ -846,8 +635,9 @@ should not replace the CLI or embed a separate lint engine. Its responsibilities
 are:
 
 - Interpret natural language requests such as "lint this AsciiDoc", "summarize
-  findings", "apply safe fixes", "apply unsafe fixes", and "use AI to repair the
-  remaining issues".
+  findings", "apply safe fixes", "apply unsafe fixes", "use AI to repair the
+  remaining issues", "add a waiver", "create a custom rule", "review this
+  rule", and "prepare a GitHub issue".
 - Resolve the tool in this order: workspace `node_modules/.bin/asciidoclint`,
   `npx asciidoclint`, then `npx -y asciidoclint@latest`.
 - Run `--format json` for machine-readable results.
@@ -855,7 +645,14 @@ are:
 - Run `--fix --unsafe` only when the user explicitly requests unsafe fixes.
 - Use `fixHelper`, rule metadata, finding details, and local source context for
   AI-assisted repairs that do not have deterministic edits.
-- Rerun lint after edits and summarize fixed and remaining findings.
+- Add source waivers only when fixing is not the right change, using the
+  narrowest scope and a reason.
+- Help create and review project-local custom rules without treating
+  organization policy as built-in policy.
+- Prepare sanitized, paste-ready feedback messages for
+  `https://github.com/f33lgood/asciidoclint/issues`.
+- Rerun lint after edits, waivers, and rule changes, then summarize fixed and
+  remaining findings.
 
 The primary skill install path should follow the open skills ecosystem:
 
@@ -863,10 +660,11 @@ The primary skill install path should follow the open skills ecosystem:
 npx skills add f33lgood/asciidoclint --skill asciidoclint -a codex -g
 ```
 
-Repo-maintenance skills under `.agents/skills` should be marked
-`metadata.internal: true` so normal discovery exposes only the public
-`asciidoclint` skill. With that organization, the shorter form also installs the
-public skill:
+The repository should not check in agent-specific install copies under
+`.agents/skills`, `.claude/skills`, or other target-agent directories. The
+single public source of truth is `skills/asciidoclint`, and developers should
+install it into their target agent when they need repo-local skill assistance.
+With that organization, the shorter form also installs the public skill:
 
 ```bash
 npx skills add f33lgood/asciidoclint
@@ -876,14 +674,135 @@ The npm package should also expose a convenience installer:
 
 ```bash
 npx asciidoclint install-skill
+npx asciidoclint uninstall-skill
 ```
 
 This command copies the bundled `skills/asciidoclint` directory into
-`$CODEX_HOME/skills/asciidoclint` or `~/.codex/skills/asciidoclint`. It should
-also support `--project` for `.codex/skills/asciidoclint`, `--dest` for explicit
-test or custom install roots, and `--force` to replace an existing skill. This
-keeps npm-package installs version-aligned with the skill that was published in
-the same package.
+the selected agent's skill root. It should support `--agent` for common coding
+agents, `--project` for project-local installs, `--dest` for explicit test or
+custom install roots, and `--force` to replace an existing skill. This keeps
+npm-package installs version-aligned with the skill that was published in the
+same package.
+
+`uninstall-skill` should remove `asciidoclint` from the same selected skills
+root. It should be idempotent so users can disable skill assistance without
+needing to inspect the filesystem first.
+
+The installer intentionally implements only the small target matrix needed by
+`asciidoclint`; the open `skills` CLI remains the full interactive installer.
+Validated target paths from `npx skills`:
+
+| Agent | `--agent` | Project root | Global root |
+|---|---|---|---|
+| Codex | `codex` | `.agents/skills/` | `~/.codex/skills/` |
+| Cursor | `cursor` | `.agents/skills/` | `~/.cursor/skills/` |
+| Claude Code | `claude-code` | `.claude/skills/` | `~/.claude/skills/` |
+| OpenClaw | `openclaw` | `skills/` | `~/.openclaw/skills/` |
+
+`--dest <skills-root>` overrides the target matrix and installs directly under
+the supplied skills root.
+
+### Skill Installation Channels
+
+End users should install a released skill. They should not need to know where
+the repository checkout lives:
+
+```bash
+npx asciidoclint@latest install-skill --force
+```
+
+or, for a project-local install that should travel with the current workspace:
+
+```bash
+npx asciidoclint@latest install-skill --project --force
+```
+
+Install a released skill for a specific project-local agent target:
+
+```bash
+npx asciidoclint@latest install-skill --project --agent codex --force
+npx asciidoclint@latest install-skill --project --agent cursor --force
+npx asciidoclint@latest install-skill --project --agent claude-code --force
+```
+
+Developers need two switchable channels:
+
+- released channel: the skill bundled in the published npm package;
+- workspace channel: the skill currently under development in an
+  `asciidoclint` repository checkout.
+
+The active channel is determined by the CLI used to run `install-skill` and the
+destination selected by `--project`, `--dest`, or the default global skills
+root. `--force` is the explicit switch operation because it replaces the
+existing `asciidoclint` skill at that destination.
+
+Inside the `asciidoclint` repository, install the workspace-under-development
+skill into the repository-local skill root:
+
+```bash
+npx tsx src/cli/index.ts install-skill --project --force
+```
+
+Use `--agent claude-code` or `--agent cursor` to test those project install
+layouts from the same checkout. Avoid `--agent openclaw --project` inside the
+`asciidoclint` repository because OpenClaw's project path is `skills/`, which is
+also this repository's canonical public skill source directory.
+
+Switch that same repository workspace back to the released skill:
+
+```bash
+npx asciidoclint@latest install-skill --project --force
+```
+
+For global developer testing, use the same commands without `--project`.
+
+Outside the `asciidoclint` repository, a developer may still install the
+workspace-under-development skill into the current project by running the
+checkout's CLI from the target project directory:
+
+```bash
+node /path/to/asciidoclint/dist/cli/index.js install-skill --project --force
+```
+
+If the checkout has not been built, run the TypeScript entry point with `tsx`:
+
+```bash
+npx tsx /path/to/asciidoclint/src/cli/index.ts install-skill --project --force
+```
+
+Switch that outside project back to the released skill with:
+
+```bash
+npx asciidoclint@latest install-skill --project --force
+```
+
+Use `--dest <skills-root>` when testing against an explicit Codex home or a
+temporary skills root:
+
+```bash
+npx asciidoclint@latest install-skill --dest /tmp/codex-skills --force
+node /path/to/asciidoclint/dist/cli/index.js install-skill --dest /tmp/codex-skills --force
+```
+
+Remove a released, project-local, or temporary skill install with the matching
+scope:
+
+```bash
+npx asciidoclint@latest uninstall-skill
+npx asciidoclint@latest uninstall-skill --project
+npx asciidoclint@latest uninstall-skill --project --agent claude-code
+npx asciidoclint@latest uninstall-skill --dest /tmp/codex-skills
+```
+
+Do not install separate public and developer copies under different skill names
+by default. A single `asciidoclint` skill name keeps user prompts stable; channel
+switching should happen by replacing the installed skill at the chosen scope.
+The repository's `skills/asciidoclint` directory is the canonical public skill
+source. Checked-in `.agents/skills`, `.claude/skills`, and other agent-specific
+install directories are intentionally avoided; they are generated installation
+targets, not source artifacts. Developers who want repo-local skill assistance
+should install the development channel with `install-skill --project --agent
+<agent> --force` and uninstall it when done.
 
 LLM calls should remain outside the core npm package initially. The package
 stays deterministic and offline-friendly; the skill uses the surrounding agent
@@ -891,119 +810,33 @@ to perform AI-assisted edits, inspect diffs, rerun lint, and report results.
 
 ## AI-Authored Rules
 
-The rule API should be simple enough for AI tools to generate built-in rules or
-project-local custom rules, but strict enough to catch conflicts and incomplete
-metadata before linting starts.
+The rule API should be simple enough for AI tools to generate or revise custom
+rules, but strict enough to catch conflicts and incomplete metadata before
+linting starts. `init-rule` is an optional scaffold helper for the documented
+custom-rule package layout; the package layout is the contract.
 
-The project should provide a scaffold command:
+Details:
 
-```bash
-asciidoclint init-rule --pack my-org --id ORG001 --alias no-todo
-```
-
-The command should create:
-
-```text
-lint-rules/ORG001-no-todo.ts
-lint-rules/ORG001-no-todo.test.ts
-lint-rules/fixtures/ORG001-no-todo/bad.adoc
-lint-rules/fixtures/ORG001-no-todo/good.adoc
-```
-
-Generated or hand-written rules must pass registry validation:
-
-- `id` is required and unique across all loaded built-in and custom rules.
-- `alias` is optional, but if present it must be unique and must not collide with
-  any rule ID.
-- A rule can have at most one alias.
-- `description` and `docs.summary` are required.
-- At least one bad example and one good example are required for publishable
-  rule packs.
-- `configSchema` is required when the rule accepts configuration.
-- Fixable rules must declare fix safety and provide fix tests.
-
-Validation commands:
-
-```bash
-asciidoclint --validate-rules
-asciidoclint --list-rules --format json
-```
-
-This gives AI agents a deterministic loop: generate a rule, run rule validation,
-run fixture tests, and revise until the rule registry has no conflicts and the
-examples pass.
+- [Custom rules](custom-rules.md)
+- [Rule architecture](rule-architecture.md)
+- [rule-create skill reference](../skills/asciidoclint/references/rule-create.md)
 
 ## Rule Packs
 
-Built-in packs:
+Built-ins use the reserved `AD###` namespace. Custom packs should use an
+organization-owned namespace such as `ORG###`. Pack tags group rules for
+presets, docs, filtering, and AI guidance without creating more built-in ID
+namespaces.
 
-| Pack | Built-in ID namespace | Purpose |
-|---|---|---|
-| `core` | `AD###` | Common AsciiDoc syntax-adjacent structure checks: heading progression, duplicate document title, unterminated blocks, source-block protection. |
-| `dependencies` | `AD###` | Includes, images, xrefs, attachments, and attribute-resolved paths. |
-| `accessibility` | `AD###` | Baseline accessibility checks that have low false-positive risk, such as explicitly empty image alt text. |
-| `policy` | `AD###` | Generic document-policy checks that are not pure syntax or dependency validation. |
-| `cleanup` | `AD###` | Conversion artifact cleanup and low-risk whitespace normalization. |
-
-Do not add a built-in prefix for every new idea. Built-ins all use the reserved
-`AD###` namespace, and their responsibility is expressed by pack and tags.
-Company, product, or template-specific rules should use a custom three-letter
-prefix such as `ORG` or `ABC` and load through `customRules`.
-
-Pack annotations are useful for:
-
-- Grouping rules without creating more built-in ID namespaces.
-- Applying default rule sets such as `asciidoclint:recommended` or
-  `asciidoclint:dependencies`.
-- Filtering output and documentation by category.
-- Letting users enable or disable a whole class of rules.
-- Helping AI tools choose the right rule category while preserving the single
-  built-in `AD###` namespace.
-
-Optional organization packs should live outside the generic core. Company-specific
-rules should stay in an organization policy pack unless the behavior is a broad
-AsciiDoc expectation, such as not linting source block content as prose or
-reporting missing include targets.
-
-Organization packs should declare their prefix reservation, for example:
-
-```ts
-export const rulePack = {
-  name: "my-org",
-  prefix: "ORG",
-  rules: [noTodoRule, sectionPolicyRule],
-};
-```
+Details live in [Rule architecture](rule-architecture.md) and
+[Custom rules](custom-rules.md).
 
 ## Configuration
 
-Configuration should support rule toggles plus schema-backed conformance.
-
-Example:
-
-```yaml
-extends:
-  - asciidoclint:recommended
-
-customRules:
-  - ./lint-rules/ORG101-required-overview-section.js
-  - ./lint-rules/ORG102-portable-table-formatting.js
-
-rules:
-  AD001: true # Alias: heading-level-progression.
-  AD024:
-    severity: error
-  ORG101:
-    severity: warning
-
-ignores:
-  - build/**
-```
-
-Configuration validation should use JSON Schema so invalid rule configuration is
-reported before linting begins. The current prototype supports rule toggles,
-severity overrides, presets, ignores, and custom rule paths; full per-rule
-`configSchema` validation is still future work.
+Configuration supports global user defaults, project policy, rule toggles,
+custom-rule packages, and document entry hints. The detailed config contract,
+including `extends` presets and editor-setting boundaries, lives in
+[Configuration](configuration.md).
 
 The conformance schema should start small and be easy to map from examples:
 
@@ -1065,10 +898,12 @@ Initial commands:
 
 ```bash
 asciidoclint "**/*.adoc"
-asciidoclint --format json docs/index.adoc
-asciidoclint --fix docs/index.adoc
-asciidoclint --fix --unsafe docs/index.adoc
-asciidoclint --config .asciidoclint.yaml docs/
+asciidoclint --format json index.adoc
+asciidoclint --fix index.adoc
+asciidoclint --fix --unsafe index.adoc
+asciidoclint --config .asciidoclint/config.yaml index.adoc
+asciidoclint --print-config index.adoc
+asciidoclint --no-global-config index.adoc
 ```
 
 Formats:
@@ -1103,7 +938,7 @@ Output rules:
   `file:line:column rule-id[/alias] severity message`.
 - Show context only when it clarifies the problem.
 - Summarize safe and unsafe fix availability after the findings.
-- Print a summary grouped by severity and fix applicability.
+- Print a summary grouped by severity, waived count, and fix applicability.
 - Keep terminal output deterministic so snapshots are easy to test.
 
 Exit codes:
@@ -1114,11 +949,11 @@ Exit codes:
 | 1 | One or more error findings. |
 | 2 | Configuration, plugin loading, or runtime error. |
 
-## VS Code/Cursor Extension
+## VS Code-Compatible Extension
 
 The project should publish a VS Code extension in addition to the Node.js
-package. Cursor can consume VS Code-compatible extensions, so the same extension
-is the expected editor integration path.
+package. The same extension can be distributed through the VS Code Marketplace
+or Open VSX and used by editors compatible with VS Code's diagnostic model.
 
 Package identity:
 
@@ -1152,7 +987,7 @@ root document
 Root documents are discovered by evidence, not by linting every `.adoc` file as
 an independent document:
 
-- Explicit `documents` entries in `.asciidoclint.yaml`.
+- Explicit `documents` entries in `.asciidoclint/config.yaml`.
 - Files that are not included by any other AsciiDoc file in the workspace.
 - Files with a level-0 document title.
 - Common names such as `index.adoc`, `master.adoc`, and `README.adoc` are used
@@ -1172,10 +1007,6 @@ ignores:
   - build/**
   - output/**
   - vendor/**
-
-editor:
-  defaultScope: document
-  lintOnSave: true
 ```
 
 Symlinked directories should not be followed by default. Users can opt into that
@@ -1239,7 +1070,7 @@ When graph traversal determines that a saved file has changed:
   it.
 - If ownership is unknown, run lightweight current-file lint first, rebuild the
   graph in the background, then re-lint the owning document once discovered.
-- If `.asciidoclint.yaml` changes, rebuild the graph and mark existing
+- If `.asciidoclint/config.yaml` changes, rebuild the graph and mark existing
   diagnostics stale; do not re-lint until save or an explicit lint command.
 - Opening, clicking, or focusing a file must not trigger lint by itself. Those
   events also should not traverse the graph; diagnostics should not be replaced
@@ -1271,13 +1102,15 @@ Expected editor behavior:
   extensions.
 - Do not lint on file open, focus, or typing. Lint on save in document context
   by default, or through explicit commands.
-- Read `.asciidoclint.yaml` from the workspace root or nearest project root.
+- Read `.asciidoclint/config.yaml` from the workspace root or nearest project
+  root, and use the same global/project/CLI config merge behavior as the CLI.
 - Show findings in the Problems panel with rule ID, alias, severity, message,
   source range, and fix helper text.
 - Include the `AD###/alias` label in diagnostic message text as well as
-  `Diagnostic.code`. VS Code/Cursor Problems filtering is more reliable against
-  visible message text than against implementation-specific diagnostic fields;
-  filtering for `AD000` should find `AD000/asciidoctor-diagnostic` records.
+  `Diagnostic.code`. VS Code-compatible Problems filtering is more reliable
+  against visible message text than against implementation-specific diagnostic
+  fields; filtering for `AD000` should find `AD000/asciidoctor-diagnostic`
+  records.
 - Allow editor-only hiding of noisy rule IDs or aliases, such as `AD000`, so
   users can suppress renderer diagnostics from the Problems panel without
   changing CLI lint behavior.
@@ -1298,7 +1131,7 @@ Settings:
   "asciidoclint.enable": true,
   "asciidoclint.run": "onSave",
   "asciidoclint.defaultScope": "document",
-  "asciidoclint.config": ".asciidoclint.yaml",
+  "asciidoclint.config": ".asciidoclint/config.yaml",
   "asciidoclint.executablePath": "",
   "asciidoclint.customRules": [],
   "asciidoclint.hiddenRules": [],
@@ -1339,8 +1172,8 @@ the editor extension.
 
 Custom rule scalability must match the CLI:
 
-- `.asciidoclint.yaml` can list local files, TypeScript rule sources, JavaScript
-  rule modules, or package names in `customRules`.
+- `.asciidoclint/config.yaml` can list local rule package folders, shared npm
+  packages, or direct rule modules in `customRules`.
 - Rule IDs and aliases are validated by the same registry.
 - Rule docs are loaded from the rule metadata or adjacent docs files and shown
   in diagnostics and hovers.
@@ -1351,11 +1184,11 @@ matcher fallback, not for the primary extension integration.
 
 ### CLI To Editor Diagnostics
 
-VS Code and Cursor do not automatically import diagnostics from arbitrary CLI
-runs. The Diagnostic API can only be updated by an extension, and task problem
-matchers only work for commands launched as editor tasks. To make external CLI
-runs visible in an already-open editor, `asciidoclint` should support an
-explicit diagnostics artifact that the extension watches.
+VS Code-compatible editors do not automatically import diagnostics from
+arbitrary CLI runs. The Diagnostic API can only be updated by an extension, and
+task problem matchers only work for commands launched as editor tasks. To make
+external CLI runs visible in an already-open editor, `asciidoclint` should
+support an explicit diagnostics artifact that the extension watches.
 
 Proposed artifact:
 
@@ -1380,7 +1213,7 @@ This gives three integration paths:
 | Trigger | Editor visibility |
 |---|---|
 | Extension lint command | Direct diagnostics via API. |
-| VS Code/Cursor task using `asciidoclint` | Problem matcher or diagnostics artifact. |
+| VS Code-compatible task using `asciidoclint` | Problem matcher or diagnostics artifact. |
 | External terminal/CI-like CLI run | Diagnostics artifact watched by the extension. |
 
 The artifact approach should be opt-in so normal CLI runs do not create editor
@@ -1446,7 +1279,7 @@ Implemented prototype coverage:
 - Config severity overrides and rule disabling.
 - Config `extends` presets and `ignores` patterns.
 - Custom rule loading from outside this repository.
-- `--list-rules`, `--explain`, and `init-rule`.
+- `--list-rules`, `--explain`, `--custom-rule`, and `init-rule`.
 - Safe fix application for `AD032/blank-before-block`, `AD034/no-hard-tabs`,
   and `AD035/blank-after-block`.
 - Coverage reporting with enforced thresholds through `npm run test:coverage`.

@@ -1,45 +1,32 @@
 <p align="center">
   <img src="assets/logo.svg" width="160" height="160" alt="asciidoclint logo">
 </p>
-<p align="center">
-  <sub><code>assets/logo.svg</code> and <code>assets/icon.svg</code> were created with <a href="https://inkscape.org/">Inkscape</a>. The <strong>lint</strong> label uses <a href="https://www.jetbrains.com/lp/mono/">JetBrains Mono</a> (SIL Open Font License).</sub>
-</p>
 
 # asciidoclint
 
 `asciidoclint` is an AsciiDoc syntax, structure, and document-policy linter for
 CLI, AI-agent, and editor workflows.
 
-`asciidoclint` began as an in-house implementation and has been open-sourced
-under the MIT License since June 1, 2026.
-
-Design goals:
-
-- Provide a library-first, typed, plugin-friendly rule model.
-- Use Asciidoctor-backed diagnostics, source mapping, include awareness, and a
-  safe/unsafe fix model.
-- Keep generic AsciiDoc syntax/structure rules separate from project or
-  organization policy rules.
-
-Start with the architecture proposal:
-
-- [Architecture](docs/architecture.md)
-
 ## Install the npm package
-
-Install in a project:
 
 ```bash
 npm install --save-dev asciidoclint
 ```
 
-Run the CLI:
+## Use the CLI
+
+Run lint:
 
 ```bash
-npx asciidoclint docs/**/*.adoc
-npx asciidoclint --format json docs/**/*.adoc
-npx asciidoclint --fix docs/**/*.adoc
-npx asciidoclint --fix --unsafe docs/**/*.adoc
+npx asciidoclint index.adoc
+npx asciidoclint --format json index.adoc
+```
+
+Apply deterministic fixes:
+
+```bash
+npx asciidoclint --fix index.adoc
+npx asciidoclint --fix --unsafe index.adoc
 ```
 
 Inspect rules:
@@ -48,121 +35,79 @@ Inspect rules:
 npx asciidoclint --list-rules
 npx asciidoclint --explain AD001
 npx asciidoclint --explain heading-level-progression
+npx asciidoclint --explain AD001 --format json
 ```
 
-Load organization-specific conformance or style rules as custom rules:
+Use a project config file when the same lint settings should be reused:
 
 ```yaml
+# .asciidoclint/config.yaml
 extends:
   - asciidoclint:recommended
+```
 
-ignores:
-  - build/**
+Use a global config file for settings that should apply across projects:
 
+```yaml
+# ~/.asciidoclint/config.yaml
 customRules:
-  - ./lint-rules/ORG001-no-todo.js
-  - ./lint-rules/ORG002-section-policy.js
+  - "@example/asciidoclint-rules"
 ```
 
-Scaffold a custom rule without modifying `asciidoclint` source:
-
-```bash
-npx asciidoclint init-rule --pack my-org --id ORG001 --alias no-todo
-```
+See [docs/configuration.md](docs/configuration.md) for configuration fields and
+merge order. See [docs/waiver.md](docs/waiver.md) for source waiver syntax and
+reporting.
 
 ## Install the AI skill
 
-The repository ships an `asciidoclint` skill under `skills/asciidoclint`. The
-skill lets AI agents trigger lint, summarize results, apply safe fixes, apply
-explicit unsafe fixes, and use reported `fixHelper` guidance for focused
-AI-assisted repairs.
-
-Install the skill directly from GitHub with the open skills CLI:
-
-```bash
-npx skills add f33lgood/asciidoclint --skill asciidoclint -a codex -g
-```
-
-The repository hides repo-maintenance skills from normal discovery, so the
-shorter form installs the public `asciidoclint` skill too:
-
-```bash
-npx skills add f33lgood/asciidoclint
-```
-
-If you already installed the npm package and want the matching bundled skill
-version, install it through the `asciidoclint` CLI:
+The repository ships an `asciidoclint` skill for AI agents. Install it from the
+npm package:
 
 ```bash
 npx asciidoclint install-skill
 ```
 
-Useful installer options:
+Or install it directly from GitHub with the open skills CLI:
 
 ```bash
-npx asciidoclint install-skill --project
-npx asciidoclint install-skill --dest ./tmp/skills --force
+npx skills add f33lgood/asciidoclint --skill asciidoclint -a codex -g
 ```
 
-## VS Code and Cursor extension
+Remove the installed skill when you want to use `asciidoclint` without AI skill
+assistance:
 
-`asciidoclint` is also available as a VS Code/Cursor extension. The extension
-shows lint issues as source-file diagnostics in the editor and Problems panel,
-including diagnostics mapped back to included source files.
+```bash
+npx asciidoclint uninstall-skill
+```
+
+The public skill exposes these user-facing workflows:
+
+| Workflow | Purpose |
+|---|---|
+| `lint-summary` | Run lint and summarize findings by severity, rule, file, waiver status, and fixability. |
+| `agentic-fix` | Use lint guidance and local source context to repair findings that deterministic fixes cannot safely handle. |
+| `waivers` | Add narrow source waivers and verify waiver syntax. |
+| `rule-create` | Create project-local or shared custom rules. |
+| `rule-review` | Review rule behavior, overlap, documentation, and tests. |
+| `feedback` | Prepare a sanitized, paste-ready GitHub issue message. |
+
+## VS Code / Open VSX-Compatible Extension
+
+`asciidoclint` is also available as a VS Code / Open VSX-compatible extension.
+Editors compatible with VS Code's diagnostic model can use it to show lint
+issues in the editor and Problems panel, including diagnostics mapped back to
+included source files.
 
 The extension can import CLI diagnostics written by:
 
 ```bash
 npx asciidoclint --format json \
   --output-diagnostics .asciidoclint/diagnostics.json \
-  docs/index.adoc
+  index.adoc
 ```
 
 See [packages/vscode-asciidoclint](packages/vscode-asciidoclint/README.md) for
 extension commands and settings.
-
-## Use this repository
-
-Install dependencies:
-
-```bash
-npm install
-```
-
-Run the check loop:
-
-```bash
-npm run check
-```
-
-Run coverage only:
-
-```bash
-npm run test:coverage
-```
-
-Coverage thresholds and the latest metrics are documented in
-[docs/reports/report-coverage.md](docs/reports/report-coverage.md).
-
-Run the CLI from source:
-
-```bash
-npx tsx src/cli/index.ts test/fixtures/api/structural_errors.adoc
-npx tsx src/cli/index.ts --format json test/fixtures/api/structural_errors.adoc
-npx tsx src/cli/index.ts --fix test/fixtures/api/structure_only.adoc
-npx tsx src/cli/index.ts install-skill --dest ./tmp/skills --force
-```
-
-Build and package the VS Code/Cursor extension:
-
-```bash
-npm run build:extension
-npm test -w vscode-asciidoclint
-npm run package -w vscode-asciidoclint
-```
-
-Install the generated `.vsix` in Cursor with **Extensions: Install from VSIX**,
-then run **asciidoclint: Lint Current File** or **asciidoclint: Lint Workspace**.
 
 ## Built-in Rules
 
@@ -207,13 +152,19 @@ then run **asciidoclint: Lint Current File** or **asciidoclint: Lint Workspace**
 | `AD043/section-title-start-left` | Section title syntax should start at the beginning of the line |
 | `AD044/local-adoc-link` | Local AsciiDoc files should be referenced with xref, not link |
 | `AD045/markdown-heading-mix` | Markdown-compatible headings should not be mixed with AsciiDoc headings |
-
-Detailed per-rule docs live under `docs/rules/`; `--explain` exposes the same
-metadata programmatically.
+| `ADW01/unknown-waiver-directive` | Waiver directive names should be known |
+| `ADW02/missing-waiver-rule-list` | Waiver directives should include a rule list |
+| `ADW03/malformed-waiver-rule-list` | Waiver rule lists should use comma-separated rule IDs |
+| `ADW04/unknown-waiver-rule-id` | Waiver rule IDs should be defined rules |
+| `ADW05/unpaired-waiver-enable-block` | Waiver enable-block directives should have a preceding disable-block |
+| `ADW06/unpaired-waiver-disable-block` | Waiver disable-block directives should have a following enable-block |
+| `ADW07/mismatched-waiver-block-rule-list` | Waiver block delimiters should use matching rule lists |
+| `ADW08/waiver-targets-waiver-rule` | Source waivers should not target ADW waiver diagnostics |
 
 ## Tags
 
-Tags group related rules and can be used to enable or disable classes of rules.
+Tags group related rules and can be used to enable or disable classes of normal
+rules. `ADW##` waiver diagnostics use tags for discovery, but remain always on.
 
 | Group | IDs |
 |---|---|
@@ -232,6 +183,7 @@ Tags group related rules and can be used to enable or disable classes of rules.
 | `lists` | `AD008`, `AD036` |
 | `parser` | `AD000` |
 | `table` | `AD004`, `AD010`, `AD017`, `AD030` |
+| `waiver` | `ADW01`, `ADW02`, `ADW03`, `ADW04`, `ADW05`, `ADW06`, `ADW07`, `ADW08` |
 | `whitespace` | `AD034` |
 | `references` | `AD023` |
 | `links` | `AD027`, `AD031`, `AD042`, `AD044` |
@@ -240,19 +192,16 @@ Tags group related rules and can be used to enable or disable classes of rules.
 | `maintainability` | `AD045` |
 | `xref` | `AD026`, `AD042`, `AD044` |
 
-## Rule ID Namespaces
+## Documentation
 
-Built-in rule IDs use one reserved namespace:
+Start with the architecture proposal:
 
-- `AD###` - all built-in `asciidoclint` rules.
+- [Architecture](docs/architecture.md)
+- [Configuration](docs/configuration.md)
+- [Rule architecture](docs/rule-architecture.md)
+- [Waivers](docs/waiver.md)
+- [Custom rules](docs/custom-rules.md)
 
-Rule responsibility is expressed through tags such as `headings`,
-`dependencies`, `policy`, and `cleanup`, not through multiple built-in ID
-prefixes. This keeps built-in IDs predictable as the rule set grows.
-
-Company, product, or template-specific rules should not be built-ins. Use a
-three-letter custom prefix such as `ORG`, `ABC`, or a team-owned namespace. The
-registry rejects duplicate IDs and aliases across built-in and custom rules.
-
-The rule-by-rule rendering and severity rationale is in
-[docs/rules/rule-necessity.md](docs/rules/rule-necessity.md).
+Detailed per-rule docs live under [docs/rules](docs/rules/). The CLI exposes
+the rule catalog through `--list-rules`, readable rule help through `--explain`,
+and structured rule metadata through `--explain <rule> --format json`.

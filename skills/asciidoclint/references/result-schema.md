@@ -16,7 +16,11 @@ Finding fields:
 - `detail`: optional additional detail.
 - `context`: optional source context.
 - `fixHelper`: optional repair instruction for humans or AI agents.
+- `waived`: present and `true` when a finding is covered by a source waiver.
+- `waiver`: waiver directive metadata for waived findings.
 - `range.start.file`, `range.start.line`, `range.start.column`: source
   location.
 - `fix.applicability`: `safe` or `unsafe` when an automatic edit exists.
 - `fix.edits`: text edits emitted by deterministic rules.
+
+For unwaived findings, `waived` and `waiver` are omitted.

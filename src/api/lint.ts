@@ -7,6 +7,7 @@ import type { BlockNode, LintFinding, LintOptions, LintResult, NormalizedDocumen
 import { getVersion } from "../version.js";
 import { applyFixes } from "./fixes.js";
 import { loadRules, type Config } from "./rules.js";
+import { applyWaivers } from "./waivers.js";
 
 export async function lintFiles(patterns: string[], options: LintOptions = {}): Promise<LintResult> {
   return lintFilesInternal(patterns, options, false);
@@ -17,10 +18,15 @@ async function lintFilesInternal(patterns: string[], options: LintOptions, after
   const { config, rules } = await loadRules(options);
   const files = await expandFiles(patterns, cwd, config);
   const enabledRules = filterEnabledRules(rules, config);
+  const knownRuleIds = new Set(["AD000", ...rules.map((rule) => rule.id)]);
   const findings: LintFinding[] = [];
+  const parsedFiles = new Map<string, NormalizedDocument["files"][number]>();
 
   for (const file of files) {
     const document = parseDocument(file);
+    for (const parsedFile of document.files) {
+      parsedFiles.set(path.resolve(parsedFile.file), parsedFile);
+    }
     mergeAsciidoctorBlocks(document, await collectParserBlocks(file));
     mergeAsciidoctorReferenceTargets(document, await collectParserReferenceTargets(file));
     resolveDocumentXrefs(document);
@@ -54,7 +60,7 @@ async function lintFilesInternal(patterns: string[], options: LintOptions, after
     }
   }
 
-  const result = { files, findings: sortFindings(findings) };
+  const result = { files, findings: sortFindings(applyWaivers(findings, [...parsedFiles.values()], knownRuleIds)) };
   if (options.fix && !afterFix) {
     applyFixes(result.findings, options.unsafeFixes ?? false);
     return lintFilesInternal(patterns, { ...options, fix: false }, true);

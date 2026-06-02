@@ -34,7 +34,8 @@ function exampleDirectory(ruleId: string, kind: "bad" | "good"): string {
 }
 
 function writeOnlyRuleConfig(directory: string, enabledRuleId: string): string {
-  const configFile = path.join(directory, ".asciidoclint.yaml");
+  const configFile = path.join(directory, ".asciidoclint", "config.yaml");
+  fs.mkdirSync(path.dirname(configFile), { recursive: true });
   const lines = ["rules:"];
   for (const rule of builtInRules) {
     lines.push(`  ${rule.id}: ${rule.id === enabledRuleId ? "true" : "false"}`);

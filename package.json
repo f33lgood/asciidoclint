@@ -1,6 +1,6 @@
 {
   "name": "asciidoclint",
-  "version": "0.5.0",
+  "version": "1.0.0",
   "description": "AsciiDoc syntax, structure, and document-policy linter",
   "author": "Shawn Hu",
   "license": "MIT",
@@ -15,6 +15,7 @@
   "type": "module",
   "files": [
     "assets",
+    "docs",
     "dist",
     "!dist/**/*.test.d.ts",
     "!dist/**/*.test.js",

@@ -29,6 +29,14 @@ import { AD042 } from "./AD042.js";
 import { AD043 } from "./AD043.js";
 import { AD044 } from "./AD044.js";
 import { AD045 } from "./AD045.js";
+import { ADW01 } from "./ADW01.js";
+import { ADW02 } from "./ADW02.js";
+import { ADW03 } from "./ADW03.js";
+import { ADW04 } from "./ADW04.js";
+import { ADW05 } from "./ADW05.js";
+import { ADW06 } from "./ADW06.js";
+import { ADW07 } from "./ADW07.js";
+import { ADW08 } from "./ADW08.js";
 import { AD024 } from "./AD024.js";
 import { AD025 } from "./AD025.js";
 import { AD026 } from "./AD026.js";
@@ -77,6 +85,14 @@ export const builtInRules: Rule[] = [
   AD043,
   AD044,
   AD045,
+  ADW01,
+  ADW02,
+  ADW03,
+  ADW04,
+  ADW05,
+  ADW06,
+  ADW07,
+  ADW08,
 ];
 
 export function ruleLabel(finding: Pick<LintFinding, "ruleId" | "alias">): string {

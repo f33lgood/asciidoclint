@@ -9,7 +9,7 @@ export interface FixSummary {
 export function applyFixes(findings: LintFinding[], unsafeFixes: boolean): FixSummary {
   const allowed: FixApplicability[] = unsafeFixes ? ["safe", "unsafe"] : ["safe"];
   const edits = findings.flatMap((finding) => {
-    if (!finding.fix || !allowed.includes(finding.fix.applicability)) {
+    if (finding.waived || !finding.fix || !allowed.includes(finding.fix.applicability)) {
       return [];
     }
     return finding.fix.edits;
@@ -72,4 +72,3 @@ function offsetFor(text: string, line: number, column: number): number {
   }
   return Math.min(offset + Math.max(column - 1, 0), text.length);
 }
-

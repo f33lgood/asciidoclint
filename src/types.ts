@@ -25,6 +25,15 @@ export interface Fix {
   edits: TextEdit[];
 }
 
+export interface WaiverRecord {
+  file: string;
+  line: number;
+  column: number;
+  directive: "disable-next-line" | "disable-block";
+  rules: string[];
+  reason?: string;
+}
+
 export interface LintFinding {
   ruleId: string;
   alias?: string;
@@ -35,6 +44,8 @@ export interface LintFinding {
   context?: string;
   fixHelper?: string;
   fix?: Fix;
+  waived?: true;
+  waiver?: WaiverRecord;
 }
 
 export interface RuleExample {
@@ -194,6 +205,8 @@ export interface LintOptions {
   format?: "pretty" | "json";
   customRules?: string[];
   cwd?: string;
+  homeDir?: string;
+  noGlobalConfig?: boolean;
   fix?: boolean;
   unsafeFixes?: boolean;
   parserDiagnostics?: boolean;

@@ -1,13 +1,13 @@
 ---
 name: asciidoclint
-description: Use when linting, summarizing, or fixing AsciiDoc files with asciidoclint, including safe fixes, explicit unsafe fixes, diagnostics artifacts, and AI-assisted repairs based on asciidoclint findings.
+description: Use when linting AsciiDoc with asciidoclint, summarizing findings, applying deterministic or AI-assisted fixes, adding source waivers, creating or reviewing custom asciidoclint rules, or preparing GitHub issue feedback for asciidoclint.
 ---
 
 # asciidoclint
 
-Use this skill for AsciiDoc linting and repair workflows. Prefer the workspace
-`asciidoclint` install when present so project configuration and custom rules
-match CI.
+Use this skill for end-user `asciidoclint` workflows. Prefer the workspace
+`asciidoclint` install when present so project configuration, custom rules, and
+CI behavior match the user's project.
 
 ## Tool Resolution
 
@@ -20,65 +20,32 @@ Use this order:
 Run from the repository or document workspace root unless the user names a
 specific directory.
 
-## Check
+Use `--format json` for machine-readable results whenever findings need to be
+summarized, repaired, waived, or reported.
 
-For lint-only requests, run:
+## Workflow Routing
 
-```bash
-npx asciidoclint --format json <targets>
-```
+Load only the reference needed for the user's request:
+
+- Lint and summary: `references/lint-summary.md`.
+- Agentic repair of findings without deterministic fixes:
+  `references/agentic-fix.md`.
+- Source waiver authoring: `references/waivers.md`.
+- Custom rule creation: `references/rule-create.md`.
+- Rule review and policy decisions: `references/rule-review.md`.
+- GitHub feedback message preparation: `references/feedback.md`.
+- JSON fields and report shape: `references/result-schema.md`.
+
+## Safety Defaults
+
+- Prefer fixing a document over waiving a finding.
+- Run deterministic safe fixes with `--fix` when the user asks to fix.
+- Run unsafe fixes with `--fix --unsafe` only when the user explicitly asks for
+  unsafe fixes.
+- For AI-assisted edits, use each finding's `fixHelper` as the primary repair
+  instruction and keep edits scoped to the reported issue.
+- Rerun `asciidoclint` after fixes, waivers, or rule changes and summarize what
+  changed.
 
 If no targets are provided, use the current workspace's AsciiDoc files or the
-tool default. Summarize findings by severity, rule, file, and fixability. Report
-safe and unsafe fix availability separately.
-
-## Safe Fixes
-
-For safe-fix requests, run:
-
-```bash
-npx asciidoclint --fix --format json <targets>
-```
-
-Then rerun without `--fix` and summarize remaining findings. Safe fixes are
-deterministic edits emitted by rules.
-
-## Unsafe Fixes
-
-Only run unsafe fixes when the user explicitly asks for unsafe fixes:
-
-```bash
-npx asciidoclint --fix --unsafe --format json <targets>
-```
-
-Then rerun lint and summarize remaining findings. Unsafe fixes may alter
-rendered structure, link semantics, or author intent.
-
-## Editor Diagnostics Artifact
-
-When the user wants CLI results visible in VS Code or Cursor, write the
-diagnostics artifact:
-
-```bash
-npx asciidoclint --format json \
-  --output-diagnostics .asciidoclint/diagnostics.json \
-  <targets>
-```
-
-The asciidoclint extension can import this artifact into editor diagnostics.
-
-## AI-Assisted Repairs
-
-When the user asks for intelligent, AI, or LLM repair:
-
-1. Run lint with JSON output.
-2. Group findings by source file.
-3. Read only affected ranges plus nearby context.
-4. Use each finding's `ruleId`, `alias`, `message`, `detail`, `context`, and
-   `fixHelper` as the repair instruction.
-5. Apply focused edits.
-6. Rerun asciidoclint.
-7. Report fixed and remaining findings.
-
-Do not invent broad prose/style rewrites unless the finding requires them. Keep
-repairs scoped to the reported AsciiDoc issue.
+tool default.

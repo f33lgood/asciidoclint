@@ -102,7 +102,7 @@ async function lintDocument(document: vscode.TextDocument, reason: string): Prom
   const target = targetForDocument(document, folder, settings);
   try {
     const result = await runLint(await getApi(), target);
-    const visibleFindings = filterEditorFindings(result.findings, settings.hiddenRules);
+    const visibleFindings = filterEditorFindings(result.findings, settings.hiddenRules, settings.showWaived);
     const affectedFiles = affectedFilesFor(document.uri.fsPath, result.files, visibleFindings);
     updateDiagnosticsForFiles(diagnostics, vscode, affectedFiles, visibleFindings);
     rememberLintFingerprint(document, settings);
@@ -188,7 +188,7 @@ async function runWorkspaceTargets(options: WorkspaceRunOptions): Promise<void> 
           output.appendLine(options.cancelMessage);
           return;
         }
-        const visibleFindings = filterFindingsInsideWorkspace(filterEditorFindings(result.findings, settings.hiddenRules), folder);
+        const visibleFindings = filterFindingsInsideWorkspace(filterEditorFindings(result.findings, settings.hiddenRules, settings.showWaived), folder);
         const outsideFindings = result.findings.length - filterFindingsInsideWorkspace(result.findings, folder).length;
         if (outsideFindings > 0) {
           output.appendLine(`Skipped ${outsideFindings} findings outside workspace folder ${folder.uri.fsPath}`);
@@ -279,7 +279,7 @@ async function importCliDiagnostics(): Promise<void> {
       } else {
         output.appendLine(`Imported diagnostics artifact: ${artifactFile}`);
       }
-      findings.push(...filterFindingsInsideWorkspace(filterEditorFindings(artifact.findings, settings.hiddenRules), folder));
+      findings.push(...filterFindingsInsideWorkspace(filterEditorFindings(artifact.findings, settings.hiddenRules, settings.showWaived), folder));
       rememberArtifactFingerprints(artifact, settings);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
@@ -386,6 +386,7 @@ function settingsFingerprint(settings: ExtensionSettings): string {
     settings.config,
     settings.customRules.join("\0"),
     settings.hiddenRules.join("\0"),
+    String(settings.showWaived),
   ].join("\n");
 }
 
@@ -438,9 +439,10 @@ function getSettings(): ExtensionSettings {
   return {
     enable: config.get("enable", true),
     run: config.get("run", "onSave"),
-    config: config.get("config", ".asciidoclint.yaml"),
+    config: config.get("config", ".asciidoclint/config.yaml"),
     customRules: config.get("customRules", []),
     hiddenRules: config.get("hiddenRules", []),
+    showWaived: config.get("showWaived", false),
     unsafeFixes: config.get("unsafeFixes", false),
     importCliDiagnostics: config.get("importCliDiagnostics", true),
   };

@@ -6,7 +6,7 @@ prepare-runtime.mjs
 **/*.test.js
 **/*.test.d.ts
 **/*.map
-vscode-asciidoclint-*.vsix
+*.vsix
 node_modules/.bin/**
 node_modules/.vite/**
 node_modules/asciidoclint/**
