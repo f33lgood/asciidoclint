@@ -120,6 +120,9 @@ export interface SectionNode {
   kind: "section";
   title: string;
   level: number;
+  style?: string;
+  sectname?: string;
+  source?: "asciidoctor" | "tolerant";
   range: SourceRange;
   titleRange: SourceRange;
   parent?: SectionNode;
@@ -131,6 +134,8 @@ export interface BlockNode {
   kind: "block";
   type: BlockType;
   style?: string;
+  context?: string;
+  source?: "asciidoctor" | "tolerant";
   title?: string;
   attributes: Record<string, string | boolean>;
   table?: TableInfo;

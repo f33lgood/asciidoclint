@@ -250,6 +250,28 @@ describe("lintFiles", () => {
     expect(after.findings.some((item) => item.ruleId === "AD008")).toBe(false);
   });
 
+  it("applies blank-after-list safe fixes for section titles", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-list-section-fix-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "* Item",
+      "== Next section",
+      "",
+    ].join("\n"));
+
+    const before = await lintFiles([doc], { cwd: directory });
+    const finding = before.findings.find((item) => item.ruleId === "AD009");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.fix?.applicability).toBe("safe");
+    expect(finding?.fixHelper).toBe("Insert one blank line before the section title so it renders as a section instead of list-item text.");
+
+    const after = await lintFiles([doc], { cwd: directory, fix: true });
+    expect(fs.readFileSync(doc, "utf8")).toContain("* Item\n\n== Next section");
+    expect(after.findings.some((item) => item.ruleId === "AD009")).toBe(false);
+  });
+
   it("marks next-line waivers and preserves waiver metadata", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-waiver-next-line-"));
     const doc = path.join(directory, "doc.adoc");
@@ -601,7 +623,7 @@ describe("lintFiles", () => {
       "",
       "See <<fig-macro>>, <<tab-attrs>>, and <<example-block>>.",
       "",
-      "image::existing.png[Architecture,title=\"Architecture\",id=fig-macro]",
+      "image::existing.png[Overview,title=\"Overview\",id=fig-macro]",
       "",
       "[cols=\"1,1\",id=tab-attrs,title=\"Attrs table\"]",
       "|===",
@@ -740,6 +762,30 @@ describe("lintFiles", () => {
     expect(document.sourceMap.every((record, index) => record.expandedLine === index + 1)).toBe(true);
   });
 
+  it("records explicit section styles on normalized sections", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-section-styles-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "[appendix]",
+      "== Reference",
+      "",
+      "[glossary]",
+      "[#glossary]",
+      "== Glossary",
+      "",
+    ].join("\n"));
+
+    const document = parseDocument(doc);
+
+    expect(document.sections.map((section) => [section.title, section.style])).toEqual([
+      ["Title", undefined],
+      ["Reference", "appendix"],
+      ["Glossary", "glossary"],
+    ]);
+  });
+
   it("allows a wrapper document to get its document title from the first include", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-wrapper-title-"));
     fs.writeFileSync(path.join(directory, "doc.adoc"), "include::title-page.adoc[]\n\ninclude::chapter.adoc[]\n");
@@ -817,6 +863,534 @@ describe("lintFiles", () => {
     const result = await lintFiles([doc], { cwd: directory });
 
     expect(result.findings.some((finding) => finding.ruleId === "AD020")).toBe(false);
+  });
+
+  it("reports appendix placement mismatches documented by Asciidoctor", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-appendix-placement-"));
+    const articleLevelZero = path.join(directory, "article-level-zero.adoc");
+    const articleNested = path.join(directory, "article-nested.adoc");
+    const bookNested = path.join(directory, "book-nested.adoc");
+    const blockMarker = path.join(directory, "block-marker.adoc");
+    fs.writeFileSync(articleLevelZero, [
+      "= Article",
+      "",
+      "[appendix]",
+      "= API Reference",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(articleNested, [
+      "= Article",
+      "",
+      "== Body",
+      "",
+      "[appendix]",
+      "=== Nested Appendix",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(bookNested, [
+      "= Book",
+      ":doctype: book",
+      "",
+      "== Chapter",
+      "",
+      "[appendix]",
+      "=== Nested Appendix",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(blockMarker, [
+      "= Article",
+      "",
+      "[appendix]",
+      "----",
+      "Block",
+      "----",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([articleLevelZero, articleNested, bookNested, blockMarker], { cwd: directory });
+    const messages = result.findings.filter((finding) => finding.ruleId === "AD020").map((finding) => finding.message);
+
+    expect(messages).toContain("Article appendix should use a level-1 section heading");
+    expect(messages.filter((message) => message === "Article appendix should use a level-1 section heading")).toHaveLength(2);
+    expect(messages).toContain("Book appendix should use a level-0 or level-1 section heading, not a nested subsection");
+    expect(messages).toContain("[appendix] should apply to a section heading");
+  });
+
+  it("allows documented article and book appendix section levels", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-appendix-valid-"));
+    const article = path.join(directory, "article.adoc");
+    const book = path.join(directory, "book.adoc");
+    const anchored = path.join(directory, "anchored.adoc");
+    const modular = path.join(directory, "modular.adoc");
+    const appendix = path.join(directory, "appendix.adoc");
+    fs.writeFileSync(article, [
+      "= Article",
+      "",
+      "== Body",
+      "",
+      "[appendix]",
+      "== API Reference",
+      "",
+      "=== Child",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(book, [
+      "= Book",
+      ":doctype: book",
+      "",
+      "= Part One",
+      "",
+      "== Chapter",
+      "",
+      "[appendix]",
+      "= Part Appendix",
+      "",
+      "=== Child",
+      "",
+      "[appendix]",
+      "== Chapter Appendix",
+      "",
+      "=== Child",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(anchored, [
+      "= Article",
+      "",
+      "[appendix]",
+      "",
+      "[[api-reference]]",
+      "== API Reference",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(modular, [
+      "= Article",
+      "",
+      "[appendix]",
+      "include::appendix.adoc[]",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(appendix, [
+      "[[api-reference]]",
+      "== API Reference",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([article, book, anchored, modular], { cwd: directory });
+
+    expect(result.findings.some((finding) => finding.ruleId === "AD020")).toBe(false);
+  });
+
+  it("reports preface placement mismatches documented by Asciidoctor", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-preface-placement-"));
+    const article = path.join(directory, "article.adoc");
+    const bookAfterChapter = path.join(directory, "book-after-chapter.adoc");
+    const partAfterChapter = path.join(directory, "part-after-chapter.adoc");
+    const nestedPreface = path.join(directory, "nested-preface.adoc");
+    const blockMarker = path.join(directory, "block-marker.adoc");
+    fs.writeFileSync(article, [
+      "= Article",
+      ":sectnums:",
+      "",
+      "[preface#notices]",
+      "== Notices",
+      "",
+      "== Body",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(bookAfterChapter, [
+      "= Book",
+      ":doctype: book",
+      ":sectnums:",
+      "",
+      "== Chapter",
+      "",
+      "[preface]",
+      "== Preface",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(partAfterChapter, [
+      "= Book",
+      ":doctype: book",
+      ":sectnums:",
+      "",
+      "= Part One",
+      "",
+      "== Chapter",
+      "",
+      "[preface]",
+      "== Part Preface",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(nestedPreface, [
+      "= Book",
+      ":doctype: book",
+      ":sectnums:",
+      "",
+      "== Chapter",
+      "",
+      "[preface]",
+      "=== Nested Preface",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(blockMarker, [
+      "= Book",
+      ":doctype: book",
+      "",
+      "[preface]",
+      "====",
+      "Block",
+      "====",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([article, bookAfterChapter, partAfterChapter, nestedPreface, blockMarker], { cwd: directory });
+    const messages = result.findings.filter((finding) => finding.ruleId === "AD046").map((finding) => finding.message);
+
+    expect(messages).toContain("Preface section is documented for book doctype, not article documents");
+    expect(messages).toContain("Book preface should appear before normal chapters");
+    expect(messages).toContain("Part preface should be the first section in its part");
+    expect(messages).toContain("Preface section should be level 0 or level 1, not a nested subsection");
+    expect(messages).toContain("[preface] should apply to a section heading");
+  });
+
+  it("allows documented book and part preface placement", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-preface-valid-"));
+    const doc = path.join(directory, "book.adoc");
+    const modularDoc = path.join(directory, "modular-book.adoc");
+    const partPreface = path.join(directory, "part-preface.adoc");
+    const multiplePrefaces = path.join(directory, "multiple-prefaces.adoc");
+    const anchoredPreface = path.join(directory, "anchored-preface.adoc");
+    fs.writeFileSync(doc, [
+      "= Book",
+      ":doctype: book",
+      ":sectnums:",
+      "",
+      "[preface]",
+      "== Preface",
+      "",
+      "=== Preface Subsection",
+      "",
+      "== Chapter",
+      "",
+      "= Part One",
+      "",
+      "[preface]",
+      "== Part Preface",
+      "",
+      "== Part Chapter",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(modularDoc, [
+      "= Book",
+      ":doctype: book",
+      "",
+      "= Part One",
+      "",
+      "include::part-preface.adoc[]",
+      "",
+      "== Part Chapter",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(partPreface, [
+      "[preface#part-preface]",
+      "== Part Preface",
+      "",
+      "Part introduction.",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(multiplePrefaces, [
+      "= Book",
+      ":doctype: book",
+      "",
+      "[preface]",
+      "== Revision History",
+      "",
+      "[preface]",
+      "== Authors",
+      "",
+      "== Chapter",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(anchoredPreface, [
+      "= Book",
+      ":doctype: book",
+      "",
+      "[preface]",
+      "",
+      "[[revision-history]]",
+      "== Revision History",
+      "",
+      "== Chapter",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc, modularDoc, multiplePrefaces, anchoredPreface], { cwd: directory });
+
+    expect(result.findings.some((finding) => finding.ruleId === "AD046")).toBe(false);
+  });
+
+  it("reports special section placement mismatches documented by Asciidoctor", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-special-section-placement-"));
+    const article = path.join(directory, "article.adoc");
+    const book = path.join(directory, "book.adoc");
+    fs.writeFileSync(article, [
+      "= Article",
+      "",
+      "== Body",
+      "",
+      "[abstract]",
+      "=== Nested Abstract",
+      "",
+      "[bibliography]",
+      "Reference paragraph.",
+      "",
+      "[glossary]",
+      "=== Nested Glossary",
+      "",
+      "[index]",
+      "=== Nested Index",
+      "",
+      "[acknowledgments]",
+      "== Thanks",
+      "",
+      "[dedication]",
+      "== Dedication",
+      "",
+      "[colophon]",
+      "== Colophon",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(book, [
+      "= Book",
+      ":doctype: book",
+      "",
+      "= Part One",
+      "",
+      "== Chapter",
+      "",
+      "[partintro]",
+      "Late part introduction.",
+      "",
+      "[acknowledgments]",
+      "=== Nested Thanks",
+      "",
+      "[dedication]",
+      "----",
+      "Block",
+      "----",
+      "",
+      "[colophon]",
+      "=== Nested Colophon",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([article, book], { cwd: directory });
+    const messagesByRule = new Map<string, string[]>();
+    for (const finding of result.findings) {
+      messagesByRule.set(finding.ruleId, [...(messagesByRule.get(finding.ruleId) ?? []), finding.message]);
+    }
+
+    expect(messagesByRule.get("AD047")).toContain("Article abstract should use a level-1 section heading");
+    expect(messagesByRule.get("AD048")).toContain("[bibliography] should apply to a section heading");
+    expect(messagesByRule.get("AD049")).toContain("Article glossary should use a level-1 section heading");
+    expect(messagesByRule.get("AD050")).toContain("Article index should use a level-1 section heading");
+    expect(messagesByRule.get("AD051")).toContain("[partintro] should appear before the first section in its part");
+    expect(messagesByRule.get("AD052")).toContain("Acknowledgments section is documented for book doctype, not article documents");
+    expect(messagesByRule.get("AD052")).toContain("Book acknowledgments should use a level-0 or level-1 section heading, not a nested subsection");
+    expect(messagesByRule.get("AD053")).toContain("Dedication section is documented for book doctype, not article documents");
+    expect(messagesByRule.get("AD053")).toContain("[dedication] should apply to a section heading");
+    expect(messagesByRule.get("AD054")).toContain("Colophon section is documented for book doctype, not article documents");
+    expect(messagesByRule.get("AD054")).toContain("Book colophon should use a level-0 or level-1 section heading, not a nested subsection");
+  });
+
+  it("reports special section edge cases that Asciidoctor accepts permissively", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-special-section-edge-cases-"));
+    const article = path.join(directory, "article.adoc");
+    const book = path.join(directory, "book.adoc");
+    fs.writeFileSync(article, [
+      "= Article",
+      "",
+      "== Body",
+      "",
+      "[abstract]",
+      "== Late Abstract",
+      "",
+      "[bibliography]",
+      "= References",
+      "",
+      "[partintro]",
+      "Article part intro.",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(book, [
+      "= Book",
+      ":doctype: book",
+      "",
+      "[abstract]",
+      "== Abstract",
+      "",
+      "[glossary]",
+      "----",
+      "Terms",
+      "----",
+      "",
+      "[index]",
+      "----",
+      "Index entries",
+      "----",
+      "",
+      "= Part One",
+      "",
+      "[partintro]",
+      "== Section-shaped Part Intro",
+      "",
+      "== Chapter",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([article, book], { cwd: directory });
+    const messagesByRule = new Map<string, string[]>();
+    for (const finding of result.findings) {
+      messagesByRule.set(finding.ruleId, [...(messagesByRule.get(finding.ruleId) ?? []), finding.message]);
+    }
+
+    expect(messagesByRule.get("AD047")).toContain("Article abstract should appear before normal body sections");
+    expect(messagesByRule.get("AD047")).toContain("Abstract section is documented for article doctype, not book documents");
+    expect(messagesByRule.get("AD048")).toContain("Article bibliography should use a level-1 or nested section heading");
+    expect(messagesByRule.get("AD049")).toContain("[glossary] should apply to a section heading");
+    expect(messagesByRule.get("AD050")).toContain("[index] should apply to a section heading");
+    expect(messagesByRule.get("AD051")).toContain("[partintro] should appear inside a book part");
+    expect(messagesByRule.get("AD051")).toContain("[partintro] should apply to a block inside a book part, not a section heading");
+  });
+
+  it("allows documented special section placements", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-special-section-valid-"));
+    const article = path.join(directory, "article.adoc");
+    const book = path.join(directory, "book.adoc");
+    fs.writeFileSync(article, [
+      "= Article",
+      "",
+      "[abstract]",
+      "== Abstract",
+      "",
+      "Summary.",
+      "",
+      "== Body",
+      "",
+      "[bibliography]",
+      "=== Scoped References",
+      "",
+      "* [[[ref]]] Reference.",
+      "",
+      "[glossary]",
+      "== Glossary",
+      "",
+      "term:: Definition.",
+      "",
+      "[index]",
+      "== Index",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(book, [
+      "= Book",
+      ":doctype: book",
+      "",
+      "[dedication]",
+      "== Dedication",
+      "",
+      "[acknowledgments]",
+      "== Acknowledgments",
+      "",
+      "= Part One",
+      "",
+      "[partintro]",
+      "Part introduction.",
+      "",
+      "== Chapter",
+      "",
+      "[colophon]",
+      "== Colophon",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([article, book], { cwd: directory });
+    const specialRuleIds = new Set(["AD047", "AD048", "AD049", "AD050", "AD051", "AD052", "AD053", "AD054"]);
+
+    expect(result.findings.some((finding) => specialRuleIds.has(finding.ruleId))).toBe(false);
+  });
+
+  it("allows documented special section multipart and nested-content forms", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-special-section-valid-forms-"));
+    const article = path.join(directory, "article.adoc");
+    const book = path.join(directory, "book.adoc");
+    fs.writeFileSync(article, [
+      "= Article",
+      "",
+      "[abstract#summary]",
+      "== Abstract",
+      "",
+      "Summary.",
+      "",
+      "== Body",
+      "",
+      "[bibliography]",
+      "=== Section References",
+      "",
+      "* [[[section-ref]]] Section reference.",
+      "",
+      "[glossary#terms]",
+      "",
+      "[[glossary-anchor]]",
+      "== Glossary",
+      "",
+      "term:: Definition.",
+      "",
+      "[index#idx]",
+      "== Index",
+      "",
+    ].join("\n"));
+    fs.writeFileSync(book, [
+      "= Book",
+      ":doctype: book",
+      "",
+      "[dedication]",
+      "= Dedication",
+      "",
+      "For the team.",
+      "",
+      "[acknowledgments]",
+      "= Acknowledgments",
+      "",
+      "Thanks.",
+      "",
+      "= Part One",
+      "",
+      "[partintro]",
+      "--",
+      "Part introduction.",
+      "--",
+      "",
+      "== Chapter",
+      "",
+      "[glossary]",
+      "= Glossary",
+      "",
+      "term:: Definition.",
+      "",
+      "[index]",
+      "= Index",
+      "",
+      "[colophon]",
+      "= Colophon",
+      "",
+      "Production notes.",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([article, book], { cwd: directory });
+    const specialRuleIds = new Set(["AD047", "AD048", "AD049", "AD050", "AD051", "AD052", "AD053", "AD054"]);
+
+    expect(result.findings.some((finding) => specialRuleIds.has(finding.ruleId))).toBe(false);
   });
 
   it("does not apply generic list, inline, block-spacing, or cell-count checks to table cell content", async () => {
@@ -910,6 +1484,56 @@ describe("lintFiles", () => {
     expect(finding?.message).toContain("did not render");
   });
 
+  it("reports incomplete nested alternate-separator table rows", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-nested-table-omitted-cell-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "[cols=\"1,1\"]",
+      "|===",
+      "2+a|",
+      "[cols=\",\",options=\"header\"]",
+      "!===",
+      "!Name !Value",
+      "a!",
+      "Only one cell in the final row",
+      "!===",
+      "|===",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const finding = result.findings.find((item) => item.ruleId === "AD004");
+
+    expect(finding?.range.start.line).toBe(9);
+    expect(finding?.message).toContain("Nested table row has 1 cell but declares 2 columns");
+  });
+
+  it("reports incomplete nested alternate-separator table rows with compact column counts", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-nested-table-compact-cols-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "[cols=\"1\"]",
+      "|===",
+      "a|",
+      "[cols=\"2*\"]",
+      "!===",
+      "! only one",
+      "!===",
+      "|===",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const finding = result.findings.find((item) => item.ruleId === "AD004");
+
+    expect(finding?.range.start.line).toBe(8);
+    expect(finding?.message).toContain("Nested table row has 1 cell but declares 2 columns");
+  });
+
   it("handles nested list markers and escaped table pipes without false positives", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-list-table-syntax-"));
     const doc = path.join(directory, "doc.adoc");
@@ -969,11 +1593,11 @@ describe("lintFiles", () => {
     fs.writeFileSync(path.join(directory, "doc.adoc"), [
       "= Title",
       "",
-      "See <<Secure_XOR_Gadget_for_Boolean_Field>>.",
+      "See <<Example_Component_for_Generic_Field>>.",
       "",
-      ".Secure XOR Gadget",
-      "[#Secure_XOR_Gadget_for_Boolean_Field,align=center]",
-      "image::image.png[Secure XOR Gadget]",
+      ".Example Component",
+      "[#Example_Component_for_Generic_Field,align=center]",
+      "image::image.png[Example Component]",
       "",
     ].join("\n"));
     fs.writeFileSync(path.join(directory, "image.png"), "png");
@@ -1100,7 +1724,7 @@ describe("lintFiles", () => {
     fs.writeFileSync(doc, [
       "= Title",
       "",
-      "See [Architecture](architecture.adoc).",
+      "See [Overview](overview.adoc).",
       "",
       "![Diagram](diagram.png)",
       "",
@@ -1112,7 +1736,7 @@ describe("lintFiles", () => {
 
     await lintFiles([doc], { cwd: directory, fix: true, unsafeFixes: true });
 
-    expect(fs.readFileSync(doc, "utf8")).toContain("See xref:architecture.adoc[Architecture].");
+    expect(fs.readFileSync(doc, "utf8")).toContain("See xref:overview.adoc[Overview].");
     expect(fs.readFileSync(doc, "utf8")).toContain("image::diagram.png[Diagram]");
     expect(fs.readFileSync(doc, "utf8")).toContain("Inline image:icon.png[Icon] marker.");
     expect(fs.readFileSync(doc, "utf8")).toContain("link:https://example.com[Example]");
@@ -1558,6 +2182,11 @@ describe("lintFiles", () => {
       "| A | B",
       "|===",
       "",
+      ".Overview table",
+      "|===",
+      "| A | B",
+      "|===",
+      "",
       "[title=\"Attribute titled table\"]",
       "|===",
       "| A | B",
@@ -1566,12 +2195,21 @@ describe("lintFiles", () => {
       ".Titled image",
       "image::existing.png[Existing]",
       "",
+      ".Image pipeline",
+      "image::existing.png[Existing]",
+      "",
       "[title=\"Attribute titled image\"]",
       "image::existing.png[Existing]",
       "",
       "image::existing.png[Existing,title=\"Macro titled image\"]",
       "",
       ".Titled diagram",
+      "[mermaid]",
+      "----",
+      "graph LR",
+      "----",
+      "",
+      ".Diagram flow",
       "[mermaid]",
       "----",
       "graph LR",
@@ -1657,10 +2295,10 @@ describe("lintFiles", () => {
     expect(result.findings.map((finding) => finding.ruleId)).not.toContain("AD028");
   });
 
-  it("reports explicitly empty alt text for block and inline images", async () => {
+  it("reports explicitly empty and generated placeholder alt text for block and inline images", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-empty-image-alt-"));
     const doc = path.join(directory, "doc.adoc");
-    for (const image of ["diagram.png", "play.png", "empty.png", "derived.png", "sized.png", "pause.png"]) {
+    for (const image of ["diagram.png", "play.png", "empty.png", "generated.png", "positional.png", "generic.png", "inline.png", "derived.png", "sized.png", "pause.png"]) {
       fs.writeFileSync(path.join(directory, image), "png");
     }
     fs.writeFileSync(doc, [
@@ -1672,11 +2310,25 @@ describe("lintFiles", () => {
       "",
       "Click image:empty.png[alt=\" \"] to stop.",
       "",
+      "image::generated.png[Diagram Description automatically generated with medium confidence]",
+      "",
+      "image::positional.png[align=center,Text Description automatically generated,width=480]",
+      "",
+      "image::generic.png[A screenshot of a computer Description automatically generated with medium confidence]",
+      "",
+      "Click image:inline.png[Application Description automatically generated] here.",
+      "",
       "image::derived.png[]",
       "",
       "Click image:sized.png[,20,20] here.",
       "",
       "Click image:pause.png[title=Pause] here.",
+      "",
+      "// image::comment.png[Diagram Description automatically generated]",
+      "// Click image:comment-inline.png[\"\"] here.",
+      "",
+      "[comment]",
+      "image::comment-paragraph.png[Diagram Description automatically generated]",
       "",
       "----",
       "image:literal.png[\"\"]",
@@ -1687,9 +2339,348 @@ describe("lintFiles", () => {
     const result = await lintFiles([doc], { cwd: directory });
     const findings = result.findings.filter((finding) => finding.ruleId === "AD028");
 
-    expect(findings.map((finding) => finding.range.start.line)).toEqual([3, 5, 7]);
+    expect(findings.map((finding) => finding.range.start.line)).toEqual([3, 5, 7, 9, 11, 13, 15]);
     expect(findings[0]?.fixHelper).toContain("image::target.png");
     expect(findings[1]?.fixHelper).toContain("image:target.png");
+    expect(findings.slice(3).every((finding) => finding.message.includes("imported"))).toBe(true);
+    expect(findings.map((finding) => finding.range.start.line)).not.toContain(23);
+    expect(findings.map((finding) => finding.range.start.line)).not.toContain(24);
+    expect(findings.map((finding) => finding.range.start.line)).not.toContain(27);
+  });
+
+  it("reports DOCX anchor caption residue without flagging semantic anchors", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-docx-anchor-caption-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "[#_Toc142906677 .anchor]####Figure 3-1. Overview Diagram.",
+      "",
+      "[#_Ref123031614 .anchor]####Table -. Status Code.",
+      "",
+      "[#_Toc142906678 .anchor]####Table 1: Capability List",
+      "",
+      "[#_Toc142906679 .anchor]####Table 2\u20111: Signal List",
+      "",
+      "[#_Toc142906680 .anchor]####Figure 6.20",
+      "",
+      "[#fig-overview]",
+      ".Overview",
+      "image::overview.png[Overview]",
+      "",
+      "----",
+      "[#_Toc142906677 .anchor]####Figure 3-1. Literal",
+      "----",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const findings = result.findings.filter((finding) => finding.ruleId === "AD055");
+
+    expect(findings.map((finding) => finding.range.start.line)).toEqual([3, 5, 7, 9, 11]);
+    expect(findings[0]?.message).toContain("Figure caption");
+    expect(findings[1]?.fixHelper).toContain("semantic anchor");
+    expect(findings[2]?.fixHelper).toContain(".Capability List");
+    expect(findings[3]?.fixHelper).toContain(".Signal List");
+    expect(findings[4]?.fixHelper).toContain("meaningful .Title");
+    expect(findings[4]?.fixHelper).not.toContain(".20");
+  });
+
+  it("reports blank list continuation residue that captures following content", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-blank-list-continuation-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "[arabic]",
+      ".. {blank}",
+      "+",
+      "",
+      "== Captured heading",
+      "",
+      "[arabic, start=3]",
+      ". {blank}",
+      "+",
+      "",
+      "Captured paragraph.",
+      "",
+      "[arabic]",
+      ". Real item",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const findings = result.findings.filter((finding) => finding.ruleId === "AD056");
+
+    expect(findings.map((finding) => [finding.range.start.line, finding.severity])).toEqual([[3, "error"], [9, "warning"]]);
+    expect(findings[0]?.message).toContain("section heading");
+  });
+
+  it("reports structural lines swallowed by preceding list content", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-blank-after-list-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "* Item",
+      "== Captured section",
+      "",
+      "* Wrapped item",
+      "continued text",
+      "=== Captured subsection",
+      "",
+      "* Figure item",
+      ".Figure title",
+      "image::diagram.png[Diagram]",
+      "",
+      "* Anchored item",
+      "[#fig-captured]",
+      "image::diagram.png[Diagram]",
+      "",
+      "* Image item",
+      "image::diagram.png[Diagram]",
+      "",
+      ". Parent:",
+      "[loweralpha]",
+      ".. Child",
+      "",
+      "* Intentional continuation",
+      "+",
+      ".Attached title",
+      "image::diagram.png[Diagram]",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const findings = result.findings.filter((finding) => finding.ruleId === "AD009");
+
+    expect(findings.map((finding) => [finding.range.start.line, finding.severity, finding.message])).toEqual([
+      [4, "error", "Section title should be separated from the preceding list"],
+      [8, "error", "Section title should be separated from the preceding list"],
+      [11, "warning", "Structural block start should be separated from the preceding list"],
+      [15, "warning", "Structural block start should be separated from the preceding list"],
+      [19, "warning", "Structural block start should be separated from the preceding list"],
+    ]);
+  });
+
+  it("reports semantic anchors attached to the wrong block type", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-semantic-anchor-target-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(path.join(directory, "diagram.png"), "png");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "[#fig-detached]",
+      ".Detached figure",
+      "",
+      "Paragraph text.",
+      "",
+      "[#fig-attached]",
+      ".Attached figure",
+      "image::diagram.png[Attached figure]",
+      "",
+      "[#table-detached]",
+      ".Detached table",
+      "",
+      "image::diagram.png[Not a table]",
+      "",
+      "[#table-attached]",
+      ".Attached table",
+      "[cols=\"1,1\"]",
+      "|===",
+      "| A | B",
+      "|===",
+      "",
+      "[#note-general]",
+      ".General anchor",
+      "Paragraph.",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const findings = result.findings.filter((finding) => finding.ruleId === "AD057");
+
+    expect(findings.map((finding) => finding.range.start.line)).toEqual([3, 12]);
+    expect(findings[0]?.message).toContain("Figure anchor");
+    expect(findings[1]?.message).toContain("Table anchor");
+  });
+
+  it("reports generic DOCX bookmark hash residue without duplicating caption residue", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-docx-anchor-heading-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "|===",
+      "|[#_Toc142906710 .anchor]####Requirement summary |",
+      "|===",
+      "",
+      ". [#_Toc142906711 .anchor]####Glossary",
+      "",
+      "[#_Toc142906712 .anchor]####Figure 1. Diagram",
+      "",
+      "[#semantic-anchor]####Not DOCX residue",
+      "",
+      "----",
+      "|[#_Toc142906713 .anchor]####Literal |",
+      "----",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const genericFindings = result.findings.filter((finding) => finding.ruleId === "AD058");
+    const captionFindings = result.findings.filter((finding) => finding.ruleId === "AD055");
+
+    expect(genericFindings.map((finding) => finding.range.start.line)).toEqual([4, 7]);
+    expect(captionFindings.map((finding) => finding.range.start.line)).toEqual([9]);
+  });
+
+  it("reports DOCX-converted nested tables that reuse the containing separator", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-docx-nested-table-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "[cols=\"1,1\"]",
+      "|===",
+      "|Name a|",
+      "Context:",
+      "",
+      "[cols=\"1,1\"]",
+      "|===",
+      "|Nested |Broken",
+      "|===",
+      "",
+      "|===",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const findings = result.findings.filter((finding) => finding.ruleId === "AD059");
+
+    expect(findings.map((finding) => [finding.range.start.line, finding.message])).toEqual([
+      [9, "Nested table appears to use the same separator as its containing table"],
+    ]);
+    expect(findings[0]?.fixHelper).toContain("alternate separator");
+  });
+
+  it("allows nested tables that use alternate separators", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-valid-nested-table-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "[cols=\"1,1\"]",
+      "|===",
+      "|Name a|",
+      "",
+      "[cols=\"1,1\"]",
+      "!===",
+      "!Nested !Valid",
+      "!===",
+      "",
+      "|===",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+
+    expect(result.findings.filter((finding) => finding.ruleId === "AD059")).toHaveLength(0);
+  });
+
+  it("reports nested table structures deeper than three total levels", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-deep-nested-table-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      "[cols=\"1,1\"]",
+      "|===",
+      "|Outer a|",
+      "",
+      "[cols=\"1,1\"]",
+      "!===",
+      "!Level two a!",
+      "",
+      "[cols=\"1,1\"]",
+      ",===",
+      ",Level three a,",
+      "",
+      "[cols=\"1,1\"]",
+      ":===",
+      ":Level four :Too deep",
+      ":===",
+      ",===",
+      "!===",
+      "|===",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const findings = result.findings.filter((finding) => finding.ruleId === "AD059");
+
+    expect(findings.map((finding) => [finding.range.start.line, finding.message])).toEqual([
+      [16, "Nested table depth exceeds three table levels"],
+    ]);
+  });
+
+  it("reports generic placeholder titles on titled tables, images, and diagrams", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-placeholder-titles-"));
+    const doc = path.join(directory, "doc.adoc");
+    fs.writeFileSync(path.join(directory, "diagram.png"), "png");
+    fs.writeFileSync(doc, [
+      "= Title",
+      "",
+      ".Table Table",
+      "|===",
+      "| A | B",
+      "|===",
+      "",
+      ".Register table",
+      "|===",
+      "| A | B",
+      "|===",
+      "",
+      ".Table stakes",
+      "|===",
+      "| A | B",
+      "|===",
+      "",
+      ".Figure",
+      "image::diagram.png[Diagram]",
+      "",
+      ".Figure layout",
+      "image::diagram.png[Diagram]",
+      "",
+      ".Overview",
+      "image::diagram.png[Overview]",
+      "",
+      ".Diagram",
+      "[mermaid]",
+      "----",
+      "graph LR",
+      "----",
+      "",
+      ".Diagram sequence",
+      "[mermaid]",
+      "----",
+      "graph LR",
+      "----",
+      "",
+      ".System flow",
+      "[mermaid]",
+      "----",
+      "graph LR",
+      "----",
+      "",
+    ].join("\n"));
+
+    const result = await lintFiles([doc], { cwd: directory });
+    const relevant = result.findings.filter((finding) => ["AD010", "AD011", "AD012"].includes(finding.ruleId));
+
+    expect(relevant.map((finding) => [finding.ruleId, finding.message])).toEqual([
+      ["AD010", "Table title is a generic placeholder"],
+      ["AD011", "Image title is a generic placeholder"],
+      ["AD012", "Diagram title is a generic placeholder"],
+    ]);
+    expect(relevant.every((finding) => finding.fixHelper?.includes("meaningful"))).toBe(true);
   });
 
   it("reports figure, table, include, appendix, and diagram structure issues", async () => {
@@ -1701,17 +2692,17 @@ describe("lintFiles", () => {
     fs.writeFileSync(doc, [
       "= Title",
       "",
-      "Figure 1: Architecture",
-      "image::existing.png[Architecture]",
+      "Figure 1: Overview",
+      "image::existing.png[Overview]",
       "",
       ".Titled image without anchor",
-      "image::existing.png[Architecture]",
+      "image::existing.png[Overview]",
       "",
       "[[fig-unreferenced]]",
       ".Anchored image without reference",
-      "image::existing.png[Architecture]",
+      "image::existing.png[Overview]",
       "",
-      "image:existing.png[Architecture]",
+      "image:existing.png[Overview]",
       "",
       "Table 1: Registers",
       "|===",
@@ -1762,21 +2753,21 @@ describe("lintFiles", () => {
       "= Title",
       "",
       ".Titled image without anchor",
-      "image::existing.png[Architecture]",
+      "image::existing.png[Overview]",
       "",
       "[#fig-hash]",
       ".Hash image",
-      "image::existing.png[Architecture]",
+      "image::existing.png[Overview]",
       "",
       "[[fig-anchor]]",
       ".Anchor image",
-      "image::existing.png[Architecture]",
+      "image::existing.png[Overview]",
       "",
       "[id=fig-longhand]",
       ".Longhand image",
-      "image::existing.png[Architecture]",
+      "image::existing.png[Overview]",
       "",
-      "image::existing.png[Architecture,title=\"Macro image\",id=fig-macro]",
+      "image::existing.png[Overview,title=\"Macro image\",id=fig-macro]",
       "",
       ".Titled table without anchor",
       "|===",
@@ -1830,6 +2821,9 @@ describe("lintFiles", () => {
       "Figure 1: Before image",
       "image::existing.png[Before]",
       "",
+      "Figure -: Placeholder image",
+      "image::existing.png[Placeholder]",
+      "",
       "image::existing.png[After]",
       "Figure 2: After image",
       "",
@@ -1838,6 +2832,9 @@ describe("lintFiles", () => {
       "----",
       "Alice -> Bob",
       "----",
+      "",
+      "Figure 3\u20111. Numbered dash figure",
+      "image::existing.png[Numbered dash]",
       "",
       "[plantuml]",
       "----",
@@ -1859,11 +2856,14 @@ describe("lintFiles", () => {
     const result = await lintFiles([doc], { cwd: directory });
     const findings = result.findings.filter((finding) => finding.ruleId === "AD016");
 
-    expect(findings.map((finding) => finding.range.start.line)).toEqual([3, 7, 9, 19]);
+    expect(findings.map((finding) => finding.range.start.line)).toEqual([3, 6, 10, 12, 18, 25]);
+    expect(findings.filter((finding) => finding.range.start.line === 3)).toHaveLength(1);
     expect(findings[0]?.fixHelper).toContain(".Before image");
-    expect(findings[1]?.fixHelper).toContain(".After image");
-    expect(findings[2]?.fixHelper).toContain(".Before diagram");
-    expect(findings[3]?.fixHelper).toContain(".After diagram");
+    expect(findings[1]?.fixHelper).toContain(".Placeholder image");
+    expect(findings[2]?.fixHelper).toContain(".After image");
+    expect(findings[3]?.fixHelper).toContain(".Before diagram");
+    expect(findings[4]?.fixHelper).toContain(".Numbered dash figure");
+    expect(findings[5]?.fixHelper).toContain(".After diagram");
   });
 
   it("does not search across intervening lines for imported figure captions", async () => {
@@ -1888,6 +2888,9 @@ describe("lintFiles", () => {
       "Alice -> Bob",
       "----",
       "",
+      "A paragraph mentions Figure 4: Overview",
+      "image::existing.png[Not adjacent caption]",
+      "",
     ].join("\n"));
 
     const result = await lintFiles([doc], { cwd: directory });
@@ -1902,6 +2905,16 @@ describe("lintFiles", () => {
       "= Title",
       "",
       "Table 1: Before table",
+      "|===",
+      "| Name | Value",
+      "|===",
+      "",
+      "Table -: Placeholder table",
+      "|===",
+      "| Name | Value",
+      "|===",
+      "",
+      "Table 2\u20111. Numbered dash table",
       "|===",
       "| Name | Value",
       "|===",
@@ -1921,9 +2934,11 @@ describe("lintFiles", () => {
     const result = await lintFiles([doc], { cwd: directory });
     const findings = result.findings.filter((finding) => finding.ruleId === "AD017");
 
-    expect(findings.map((finding) => finding.range.start.line)).toEqual([3, 11]);
+    expect(findings.map((finding) => finding.range.start.line)).toEqual([3, 8, 13, 21]);
     expect(findings[0]?.fixHelper).toContain(".Before table");
-    expect(findings[1]?.fixHelper).toContain(".After table");
+    expect(findings[1]?.fixHelper).toContain(".Placeholder table");
+    expect(findings[2]?.fixHelper).toContain(".Numbered dash table");
+    expect(findings[3]?.fixHelper).toContain(".After table");
   });
 
   it("does not search across intervening lines for imported table captions", async () => {
@@ -1950,6 +2965,11 @@ describe("lintFiles", () => {
       "| Name | Value",
       "|===",
       "",
+      "A paragraph mentions Table 4: Register map",
+      "|===",
+      "| Name | Value",
+      "|===",
+      "",
     ].join("\n"));
 
     const result = await lintFiles([doc], { cwd: directory });
@@ -1963,9 +2983,9 @@ describe("lintFiles", () => {
     fs.writeFileSync(doc, [
       "= Title",
       "",
-      "image:https://example.com/diagram.svg[Architecture]",
+      "image:https://example.com/diagram.svg[Overview]",
       "",
-      "See image:diagram.png[Architecture] inline.",
+      "See image:diagram.png[Overview] inline.",
       "",
       "image:linux.png[Linux,150,150,float=\"right\"]",
       "You can find Linux everywhere these days.",
@@ -2379,7 +3399,7 @@ describe("lintFiles", () => {
       "= Title",
       "",
       "* Example: compute latexmath:[\\mathbf{(m * r^e)^d \\ mod \\ n}], then continue.",
-      "* Example: `Latency = (Request Words + Response Words) * 2`.",
+      "* Example: `Latency = (Input Units + Output Units) * 2`.",
       "* *`GENERIC_REGISTER_SIZE`*: Defines the protected data granularity.",
       "",
       "```",

@@ -1,12 +1,12 @@
 import type { Rule } from "../types.js";
 
-const captionPattern = /^Table\s+\d+(?:[-.]\d+)?[:.]\s+(\S.*)$/i;
+const captionPattern = /^Table\s+(?:\d+(?:[-.\u2010-\u2015]\d+)*|-)[.:]\s+(\S.*)$/i;
 
 export const AD017: Rule = {
   id: "AD017",
   alias: "malformed-table-caption",
   description: "Table captions should use AsciiDoc title syntax",
-  tags: ["core", "table"],
+  tags: ["core", "table", "docx"],
   parser: "document",
   docs: {
     summary: "A table caption line adjacent to a table should be an AsciiDoc block title.",
@@ -14,7 +14,7 @@ export const AD017: Rule = {
     badExamples: [{ code: "Table 1: Registers\n|===\n| Name | Value\n|===" }],
     goodExamples: [{ code: ".Registers\n|===\n| Name | Value\n|===" }],
     fixability: "no",
-    fixHelper: "Move the caption immediately before the table and convert it to a .Title line without the generated Table number.",
+    fixHelper: "Move the caption immediately before the table and convert it to a meaningful .Title line without the generated Table number. Preserve or derive the real caption text; do not use placeholders such as .Table Table.",
   },
   function: ({ document }, onError) => {
     const files = new Map(document.files.map((file) => [file.file, file.lines]));
@@ -60,6 +60,6 @@ function reportCaption(
     severity: "warning",
     message: `Table caption should use AsciiDoc title syntax${position === "after" ? " before the table" : ""}`,
     range: { start: { file, line, column: 1 } },
-    fixHelper: `Use .${title} immediately before the table so Asciidoctor generates the Table number.`,
+    fixHelper: `Use .${title} immediately before the table so Asciidoctor generates the Table number. Preserve the meaningful caption text and do not use a generic placeholder title.`,
   });
 }

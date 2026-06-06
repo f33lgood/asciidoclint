@@ -2,7 +2,7 @@
   "name": "asciidoclint",
   "displayName": "asciidoclint",
   "description": "AsciiDoc lint diagnostics powered by asciidoclint",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "f33lgood",
   "icon": "media/icon.png",
   "author": "Shawn Hu",

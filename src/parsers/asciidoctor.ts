@@ -2,10 +2,12 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
-import type { BlockNode, LintFinding, ReferenceTarget } from "../types.js";
+import type { BlockNode, LintFinding, ReferenceTarget, SectionNode } from "../types.js";
+import { specialSectionStyles } from "../rules/specialSections.js";
 
 const require = createRequire(typeof __filename === "string" ? __filename : import.meta.url);
 let asciidoctor: any;
+const specialSectionStyleSet = new Set<string>(specialSectionStyles);
 
 export function collectAsciidoctorDiagnostics(file: string): LintFinding[] {
   if (shouldIsolateAsciidoctor()) {
@@ -42,6 +44,24 @@ export function collectAsciidoctorBlocks(file: string): BlockNode[] {
       sourcemap: true,
     });
     return blocksFromDocument(document);
+  } catch {
+    return [];
+  }
+}
+
+export function collectAsciidoctorSections(file: string): SectionNode[] {
+  if (shouldIsolateAsciidoctor()) {
+    return collectAsciidoctorSectionsInChild(file);
+  }
+  try {
+    const processor = getAsciidoctor();
+    const logger = processor.MemoryLogger.create();
+    processor.LoggerManager.setLogger(logger);
+    const document = processor.loadFile(file, {
+      safe: "unsafe",
+      sourcemap: true,
+    });
+    return sectionsFromDocument(document, file);
   } catch {
     return [];
   }
@@ -111,6 +131,27 @@ function collectAsciidoctorBlocksInChild(file: string): BlockNode[] {
   }
 }
 
+function collectAsciidoctorSectionsInChild(file: string): SectionNode[] {
+  const asciidoctorEntry = require.resolve("asciidoctor");
+  const child = spawnSync(process.execPath, ["-e", isolatedAsciidoctorSectionsScript(), file, asciidoctorEntry], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      ASCIIDOCLINT_ISOLATE_ASCIIDOCTOR: "0",
+    },
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  if (child.status !== 0) {
+    return [];
+  }
+  try {
+    return JSON.parse(child.stdout) as SectionNode[];
+  } catch {
+    return [];
+  }
+}
+
 function collectAsciidoctorReferenceTargetsInChild(file: string): ReferenceTarget[] {
   const asciidoctorEntry = require.resolve("asciidoctor");
   const child = spawnSync(process.execPath, ["-e", isolatedAsciidoctorReferenceTargetsScript(), file, asciidoctorEntry], {
@@ -130,6 +171,52 @@ function collectAsciidoctorReferenceTargetsInChild(file: string): ReferenceTarge
   } catch {
     return [];
   }
+}
+
+function isolatedAsciidoctorSectionsScript(): string {
+  return `
+const path = require("node:path");
+const file = process.argv[1];
+const asciidoctorEntry = process.argv[2];
+delete globalThis.Opal;
+const asciidoctor = require(asciidoctorEntry)();
+const logger = asciidoctor.MemoryLogger.create();
+asciidoctor.LoggerManager.setLogger(logger);
+function pos(file, line, column) {
+  return { file, line, column };
+}
+function sectionsFromDocument(document) {
+  return (document.findBy({ context: "section" }) || []).flatMap((section) => {
+    const location = section.getSourceLocation && section.getSourceLocation();
+    const sourceFile = location && location.file ? path.resolve(String(location.file)) : path.resolve(file);
+    const line = Number((location && (location.getLineNumber && location.getLineNumber())) || (location && location.lineno) || 1);
+    const title = String((section.getTitle && section.getTitle()) || section.title || "");
+    if (!sourceFile || !line || !title) {
+      return [];
+    }
+    const sectname = (section.getSectionName && section.getSectionName()) || section.sectname;
+    const style = (section.getStyle && section.getStyle()) || undefined;
+    return [{
+      kind: "section",
+      title,
+      level: Number((section.getLevel && section.getLevel()) || section.level || 0),
+      style: style ? String(style) : undefined,
+      sectname: sectname ? String(sectname) : undefined,
+      source: "asciidoctor",
+      range: { start: pos(sourceFile, line, 1) },
+      titleRange: { start: pos(sourceFile, line, 1) },
+      children: [],
+      blocks: [],
+    }];
+  });
+}
+try {
+  const document = asciidoctor.loadFile(file, { safe: "unsafe", sourcemap: true });
+  process.stdout.write(JSON.stringify(sectionsFromDocument(document)));
+} catch {
+  process.stdout.write("[]");
+}
+`;
 }
 
 function isolatedAsciidoctorScript(): string {
@@ -163,6 +250,7 @@ process.stdout.write(JSON.stringify(findings));
 }
 
 function isolatedAsciidoctorBlocksScript(): string {
+  const specialStyles = JSON.stringify(specialSectionStyles);
   return `
 const fs = require("node:fs");
 const path = require("node:path");
@@ -172,6 +260,7 @@ delete globalThis.Opal;
 const asciidoctor = require(asciidoctorEntry)();
 const logger = asciidoctor.MemoryLogger.create();
 asciidoctor.LoggerManager.setLogger(logger);
+const specialSectionStyleSet = new Set(${specialStyles});
 function pos(file, line, column) {
   return { file, line, column };
 }
@@ -193,6 +282,12 @@ function blocksFromDocument(document) {
     .concat(document.findBy({ context: "listing" }) || [])
     .concat(document.findBy({ context: "literal" }) || [])
     .filter((block) => diagramStyles.has(String((block.getStyle && block.getStyle()) || "")));
+  const styledNonSections = []
+    .concat(document.findBy((block) => {
+      const context = String((block.getContext && block.getContext()) || "");
+      const style = String((block.getStyle && block.getStyle()) || "");
+      return context !== "section" && specialSectionStyleSet.has(style);
+    }) || []);
   return []
     .concat(tables.map((block) => {
     const location = block.getSourceLocation && block.getSourceLocation();
@@ -203,6 +298,8 @@ function blocksFromDocument(document) {
     return {
       kind: "block",
       type: "table",
+      context: "table",
+      source: "asciidoctor",
       style: block.getStyle && block.getStyle() ? String(block.getStyle()) : undefined,
       title: block.getTitle && block.getTitle() ? String(block.getTitle()) : undefined,
       attributes: Object.fromEntries(Object.entries(attributes).filter(([, value]) => ["string", "number", "boolean"].includes(typeof value)).map(([key, value]) => [key, String(value)])),
@@ -212,7 +309,8 @@ function blocksFromDocument(document) {
     };
   }))
     .concat(images.map((block) => blockNode(block, "image")))
-    .concat(diagrams.map((block) => blockNode(block, "diagram")));
+    .concat(diagrams.map((block) => blockNode(block, "diagram")))
+    .concat(styledNonSections.map((block) => blockNode(block, blockTypeForContext(String((block.getContext && block.getContext()) || "")))));
 }
 function blockNode(block, type) {
   const location = block.getSourceLocation && block.getSourceLocation();
@@ -222,11 +320,16 @@ function blockNode(block, type) {
   return {
     kind: "block",
     type,
+    context: block.getContext && block.getContext() ? String(block.getContext()) : undefined,
+    source: "asciidoctor",
     style: block.getStyle && block.getStyle() ? String(block.getStyle()) : undefined,
     title: block.getTitle && block.getTitle() ? String(block.getTitle()) : undefined,
     attributes: Object.fromEntries(Object.entries(attributes).filter(([, value]) => ["string", "number", "boolean"].includes(typeof value)).map(([key, value]) => [key, typeof value === "boolean" ? value : String(value)])),
     range: { start: pos(sourceFile, startLine, 1) },
   };
+}
+function blockTypeForContext(context) {
+  return ["paragraph","listing","literal","example","sidebar","quote","table","image","admonition","passthrough","stem"].includes(context) ? context : "unknown";
 }
 function primitiveNumber(value) {
   return typeof value === "number" ? value : undefined;
@@ -294,6 +397,11 @@ function blocksFromDocument(document: any): BlockNode[] {
     ...(document.findBy?.({ context: "listing" }) ?? []),
     ...(document.findBy?.({ context: "literal" }) ?? []),
   ].filter((block: any) => diagramStyles.has(String(block.getStyle?.() ?? "")));
+  const styledNonSections = (document.findBy?.((block: any) => {
+    const context = String(block.getContext?.() ?? "");
+    const style = String(block.getStyle?.() ?? "");
+    return context !== "section" && specialSectionStyleSet.has(style);
+  }) ?? []);
   return [
     ...tables.map((block: any): BlockNode | undefined => {
     const location = block.getSourceLocation?.();
@@ -307,6 +415,8 @@ function blocksFromDocument(document: any): BlockNode[] {
     return {
       kind: "block",
       type: "table",
+      context: "table",
+      source: "asciidoctor",
       style: block.getStyle?.() ? String(block.getStyle()) : undefined,
       title: block.getTitle?.() ? String(block.getTitle()) : undefined,
       attributes,
@@ -323,7 +433,40 @@ function blocksFromDocument(document: any): BlockNode[] {
   }),
     ...images.map((block: any): BlockNode | undefined => genericBlockNode(block, "image")),
     ...diagrams.map((block: any): BlockNode | undefined => genericBlockNode(block, "diagram")),
+    ...styledNonSections.map((block: any): BlockNode | undefined => genericBlockNode(block, blockTypeForContext(String(block.getContext?.() ?? "")))),
   ].filter((block: BlockNode | undefined): block is BlockNode => !!block);
+}
+
+function sectionsFromDocument(document: any, rootFile: string): SectionNode[] {
+  return (document.findBy?.({ context: "section" }) ?? [])
+    .map((section: any): SectionNode | undefined => {
+      const location = section.getSourceLocation?.();
+      const sourceFile = location?.file ? path.resolve(String(location.file)) : path.resolve(rootFile);
+      const line = Number(location?.getLineNumber?.() ?? location?.lineno ?? 1);
+      const title = String(section.getTitle?.() ?? section.title ?? "");
+      if (!sourceFile || !line || !title) {
+        return undefined;
+      }
+      const sectname = section.getSectionName?.() ?? section.sectname;
+      const style = section.getStyle?.();
+      return {
+        kind: "section",
+        title,
+        level: Number(section.getLevel?.() ?? section.level ?? 0),
+        style: style ? String(style) : undefined,
+        sectname: sectname ? String(sectname) : undefined,
+        source: "asciidoctor",
+        range: {
+          start: { file: sourceFile, line, column: 1 },
+        },
+        titleRange: {
+          start: { file: sourceFile, line, column: 1 },
+        },
+        children: [],
+        blocks: [],
+      };
+    })
+    .filter((section: SectionNode | undefined): section is SectionNode => !!section);
 }
 
 function referenceTargetsFromDocument(document: any, rootFile: string): ReferenceTarget[] {
@@ -362,6 +505,8 @@ function genericBlockNode(block: any, type: BlockNode["type"]): BlockNode | unde
   return {
     kind: "block",
     type,
+    context: block.getContext?.() ? String(block.getContext()) : undefined,
+    source: "asciidoctor",
     style: block.getStyle?.() ? String(block.getStyle()) : undefined,
     title: block.getTitle?.() ? String(block.getTitle()) : undefined,
     attributes: primitiveAttributes(block.getAttributes?.() ?? {}),
@@ -369,6 +514,13 @@ function genericBlockNode(block: any, type: BlockNode["type"]): BlockNode | unde
       start: { file: sourceFile, line: startLine, column: 1 },
     },
   };
+}
+
+function blockTypeForContext(context: string): BlockNode["type"] {
+  if (["paragraph", "listing", "literal", "example", "sidebar", "quote", "table", "image", "admonition", "passthrough", "stem"].includes(context)) {
+    return context as BlockNode["type"];
+  }
+  return "unknown";
 }
 
 function tableInfo(block: any): BlockNode["table"] {

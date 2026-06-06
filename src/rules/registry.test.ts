@@ -8,7 +8,7 @@ import type { Rule } from "../types.js";
 describe("rule registry", () => {
   it("validates built-in rule metadata", () => {
     expect(() => validateRules(builtInRules)).not.toThrow();
-    expect(builtInRules).toHaveLength(46);
+    expect(builtInRules).toHaveLength(61);
   });
 
   it("has a rule documentation page for every built-in rule", () => {

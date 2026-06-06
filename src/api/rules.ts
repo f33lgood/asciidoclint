@@ -132,7 +132,7 @@ function configSources(options: Required<Pick<ConfigLoadOptions, "cwd">> & Confi
   }
 
   const project = findProjectConfig(options.cwd);
-  if (project) {
+  if (project && !sources.some((source) => path.resolve(source.file) === path.resolve(project))) {
     sources.push({ kind: "project", file: project });
   }
   return sources;

@@ -13,8 +13,8 @@ export const AD025: Rule = {
     fixHelper: "Create the image file, fix the image target or imagesdir value, or use a URL target when the image is intentionally remote.",
     badExamples: [{ code: "image::missing.png[]" }],
     goodExamples: [
-      { code: "image::diagram.png[Architecture diagram]" },
-      { code: ":imagesdir: images\nimage::diagram.png[Architecture diagram]" },
+      { code: "image::diagram.png[Overview diagram]" },
+      { code: ":imagesdir: images\nimage::diagram.png[Overview diagram]" },
       { code: "See image:icon.svg[Status icon]." },
       { code: "image::https://example.com/diagram.png[Remote diagram]" },
     ],

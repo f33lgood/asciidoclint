@@ -12,8 +12,8 @@ export const AD029: Rule = {
     rationale: "Asciidoctor accepts some Markdown-compatible syntax, including Markdown-style headings and fenced code blocks. This rule only flags known conversion residue that does not become the intended AsciiDoc structure.",
     fixability: "unsafe",
     fixHelper: "Rewrite the residue using the intended AsciiDoc macro: link:target[text], xref:target[text], or image::target[Alt text].",
-    badExamples: [{ code: "See [Architecture](architecture.adoc).\n\n![Alt](image.png)\n\n(https://example.com)[Example]" }],
-    goodExamples: [{ code: "See xref:architecture.adoc[Architecture].\n\nimage::image.png[Alt]\n\nlink:https://example.com[Example]" }],
+    badExamples: [{ code: "See [Overview](overview.adoc).\n\n![Alt](image.png)\n\n(https://example.com)[Example]" }],
+    goodExamples: [{ code: "See xref:overview.adoc[Overview].\n\nimage::image.png[Alt]\n\nlink:https://example.com[Example]" }],
   },
   function: ({ document }, onError) => {
     for (const file of document.files) {

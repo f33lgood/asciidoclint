@@ -55,7 +55,11 @@ Review in this order:
 12. Check tests: at least one bad example, one good example, and edge cases for
     documented exceptions.
 13. Sanitize examples inspired by real documents before committing docs,
-    reports, fixtures, or snapshots.
+    reports, fixtures, snapshots, issue drafts, or prompt text. Check diagnostic
+    messages, `fixHelper`, fixture filenames, config snippets, and generated
+    output for copied source terms, internal paths, private URLs, product names,
+    bug IDs, people, usernames, emails, register/interface names, and device
+    names.
 
 Report the conclusion with:
 
@@ -66,3 +70,6 @@ Report the conclusion with:
 - fixability and repair guidance;
 - overlap or conflict with other rules;
 - required implementation, docs, or test changes.
+
+Keep the report sanitized. Cite rule IDs, aliases, parser surfaces, and line
+numbers; redact private source excerpts and absolute paths.

@@ -7,6 +7,7 @@ import { AD005 } from "./AD005.js";
 import { AD006 } from "./AD006.js";
 import { AD007 } from "./AD007.js";
 import { AD008 } from "./AD008.js";
+import { AD009 } from "./AD009.js";
 import { AD010 } from "./AD010.js";
 import { AD011 } from "./AD011.js";
 import { AD012 } from "./AD012.js";
@@ -29,6 +30,20 @@ import { AD042 } from "./AD042.js";
 import { AD043 } from "./AD043.js";
 import { AD044 } from "./AD044.js";
 import { AD045 } from "./AD045.js";
+import { AD046 } from "./AD046.js";
+import { AD047 } from "./AD047.js";
+import { AD048 } from "./AD048.js";
+import { AD049 } from "./AD049.js";
+import { AD050 } from "./AD050.js";
+import { AD051 } from "./AD051.js";
+import { AD052 } from "./AD052.js";
+import { AD053 } from "./AD053.js";
+import { AD054 } from "./AD054.js";
+import { AD055 } from "./AD055.js";
+import { AD056 } from "./AD056.js";
+import { AD057 } from "./AD057.js";
+import { AD058 } from "./AD058.js";
+import { AD059 } from "./AD059.js";
 import { ADW01 } from "./ADW01.js";
 import { ADW02 } from "./ADW02.js";
 import { ADW03 } from "./ADW03.js";
@@ -55,6 +70,7 @@ export const builtInRules: Rule[] = [
   AD006,
   AD007,
   AD008,
+  AD009,
   AD010,
   AD011,
   AD012,
@@ -85,6 +101,20 @@ export const builtInRules: Rule[] = [
   AD043,
   AD044,
   AD045,
+  AD046,
+  AD047,
+  AD048,
+  AD049,
+  AD050,
+  AD051,
+  AD052,
+  AD053,
+  AD054,
+  AD055,
+  AD056,
+  AD057,
+  AD058,
+  AD059,
   ADW01,
   ADW02,
   ADW03,

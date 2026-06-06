@@ -69,7 +69,7 @@ export function parseDocument(file: string): NormalizedDocument {
     expandedLine: 1,
   };
 
-  parseFile(absolute, state, { ...state.attributes });
+  parseFile(absolute, state, { ...state.attributes }, []);
   finalizeXrefDependencies(state);
   const rootLines = state.files.find((entry) => entry.file === absolute)?.lines ?? [];
   const dependencies: DependencyGraph = { records: state.dependencies };
@@ -90,7 +90,12 @@ export function parseDocument(file: string): NormalizedDocument {
   };
 }
 
-function parseFile(file: string, state: ParseState, inheritedAttributes: Record<string, string>): Record<string, string> {
+function parseFile(
+  file: string,
+  state: ParseState,
+  inheritedAttributes: Record<string, string>,
+  sectionStack: SectionNode[],
+): Record<string, string> {
   const absolute = path.resolve(file);
   if (state.visited.has(absolute)) {
     return { ...inheritedAttributes };
@@ -107,7 +112,6 @@ function parseFile(file: string, state: ParseState, inheritedAttributes: Record<
   const lines = text.split(/\r?\n/);
   state.files.push({ file: absolute, lines });
   const attributes = { ...inheritedAttributes };
-  const sectionStack: SectionNode[] = [];
   let openBlock: OpenBlock | undefined;
   const conditionalStack: boolean[] = [];
 
@@ -211,7 +215,7 @@ function parseFile(file: string, state: ParseState, inheritedAttributes: Record<
         status,
       });
       if (status === "resolved" && isAsciiDocSourceFile(resolved)) {
-        Object.assign(attributes, parseFile(resolved, state, attributes));
+        Object.assign(attributes, parseFile(resolved, state, attributes, sectionStack));
       }
       continue;
     }
@@ -276,6 +280,7 @@ function parseFile(file: string, state: ParseState, inheritedAttributes: Record<
         kind: "section",
         title,
         level,
+        style: detectSectionStyle(lines, index),
         range,
         titleRange: range,
         children: [],
@@ -388,7 +393,7 @@ function resolveXref(file: string, target: string, state: ParseState): { status:
     if (!targetAnchor) {
       return { status: "resolved", resolvedTarget: resolvedFile };
     }
-    parseFile(resolvedFile, state, { ...state.attributes });
+    parseFile(resolvedFile, state, { ...state.attributes }, []);
     return hasAnchor(state, resolvedFile, targetAnchor)
       ? { status: "resolved", resolvedTarget: resolvedFile }
       : { status: "missing" };
@@ -548,6 +553,32 @@ function detectStyle(previousLine: string | undefined): string | undefined {
   }
   const content = previous.slice(1, -1);
   return content.split(",")[0];
+}
+
+function detectSectionStyle(lines: string[], headingIndex: number): string | undefined {
+  for (let index = headingIndex - 1; index >= 0; index -= 1) {
+    const line = (lines[index] ?? "").trim();
+    if (!line) {
+      return undefined;
+    }
+    if (!line.startsWith("[") || !line.endsWith("]")) {
+      return undefined;
+    }
+    const style = parseStyleName(line.slice(1, -1));
+    if (style) {
+      return style;
+    }
+  }
+  return undefined;
+}
+
+function parseStyleName(attributeList: string): string | undefined {
+  const firstAttribute = attributeList.split(",")[0]?.trim() ?? "";
+  if (!firstAttribute || firstAttribute.startsWith("#") || firstAttribute.startsWith(".") || firstAttribute.startsWith("%")) {
+    return undefined;
+  }
+  const style = firstAttribute.match(/^[^#.%=]+/)?.[0]?.trim();
+  return style || undefined;
 }
 
 function isProtectedOpenBlock(openBlock: OpenBlock | undefined): boolean {

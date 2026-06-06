@@ -122,6 +122,7 @@ extension commands and settings.
 | `AD006/included-document-title` | Included AsciiDoc files should not introduce a level-0 title without level offset |
 | `AD007/heading-depth-limit` | Section headings should not exceed Asciidoctor's supported depth |
 | `AD008/blank-before-list` | Lists should be separated from preceding paragraph text |
+| `AD009/blank-after-list` | Lists should be separated from following structural blocks |
 | `AD010/table-title` | Table blocks should have a title |
 | `AD011/image-title` | Block images should have a title |
 | `AD012/diagram-title` | Diagram blocks should have a title |
@@ -129,14 +130,14 @@ extension commands and settings.
 | `AD016/malformed-figure-caption` | Figure captions should use AsciiDoc title syntax |
 | `AD017/malformed-table-caption` | Table captions should use AsciiDoc title syntax |
 | `AD019/content-after-include` | Text should not be attached directly after include directives |
-| `AD020/appendix-section-level` | Appendices should be section-level blocks in article documents |
+| `AD020/appendix-placement` | Appendix markers should apply to documented appendix section levels |
 | `AD022/circular-include` | Include trees must not contain cycles |
 | `AD023/empty-section` | Sections should contain body content or child sections |
 | `AD024/missing-include` | Include targets should exist after attribute substitution |
 | `AD025/missing-image` | Image targets should exist after attribute substitution |
 | `AD026/missing-xref` | Cross-reference targets should resolve to an anchor or file |
 | `AD027/missing-local-link` | Local link targets should resolve to existing files |
-| `AD028/image-alt-text` | Images should not explicitly set empty alt text |
+| `AD028/image-alt-text` | Images should provide meaningful alt text |
 | `AD029/markdown-link-image-residue` | Markdown link and image residue should not render as text |
 | `AD030/markdown-table-residue` | Markdown pipe table residue should not render as text |
 | `AD031/no-nested-link-text` | Link text should not contain nested links or cross references |
@@ -152,6 +153,20 @@ extension commands and settings.
 | `AD043/section-title-start-left` | Section title syntax should start at the beginning of the line |
 | `AD044/local-adoc-link` | Local AsciiDoc files should be referenced with xref, not link |
 | `AD045/markdown-heading-mix` | Markdown-compatible headings should not be mixed with AsciiDoc headings |
+| `AD046/preface-placement` | Preface sections should match documented book placement |
+| `AD047/abstract-placement` | Abstract sections should match documented article placement |
+| `AD048/bibliography-placement` | Bibliography markers should apply to documented bibliography sections |
+| `AD049/glossary-placement` | Glossary markers should apply to documented glossary section levels |
+| `AD050/index-placement` | Index markers should apply to documented index section levels |
+| `AD051/partintro-placement` | Part introduction markers should apply to the introductory block of a book part |
+| `AD052/acknowledgments-placement` | Acknowledgments markers should apply to documented book section levels |
+| `AD053/dedication-placement` | Dedication markers should apply to documented book section levels |
+| `AD054/colophon-placement` | Colophon markers should apply to documented book section levels |
+| `AD055/docx-anchor-caption-residue` | DOCX anchor caption residue should be converted to AsciiDoc titles |
+| `AD056/dangling-blank-list-continuation` | Blank list continuations should not capture following content |
+| `AD057/semantic-anchor-target` | Semantic anchors should attach to the matching block type |
+| `AD058/docx-bookmark-hash-residue` | DOCX bookmark/hash residue should be cleaned up |
+| `AD059/docx-nested-table-structure` | DOCX-converted nested tables should use valid nested table separators and shallow nesting |
 | `ADW01/unknown-waiver-directive` | Waiver directive names should be known |
 | `ADW02/missing-waiver-rule-list` | Waiver directives should include a rule list |
 | `ADW03/malformed-waiver-rule-list` | Waiver rule lists should use comma-separated rule IDs |
@@ -168,26 +183,30 @@ rules. `ADW##` waiver diagnostics use tags for discovery, but remain always on.
 
 | Group | IDs |
 |---|---|
-| `blank_lines` | `AD008` |
+| `anchor` | `AD057` |
+| `blank_lines` | `AD008`, `AD009` |
 | `blocks` | `AD003`, `AD032`, `AD035` |
 | `accessibility` | `AD028`, `AD042` |
-| `cleanup` | `AD032`, `AD034`, `AD035`, `AD036`, `AD037`, `AD039`, `AD040`, `AD041` |
-| `conversion` | `AD029`, `AD030`, `AD031`, `AD036`, `AD037`, `AD039`, `AD040` |
+| `cleanup` | `AD032`, `AD034`, `AD035`, `AD036`, `AD037`, `AD039`, `AD040`, `AD041`, `AD055`, `AD058`, `AD059` |
+| `conversion` | `AD029`, `AD030`, `AD031`, `AD037`, `AD039`, `AD040`, `AD055`, `AD056`, `AD058`, `AD059` |
+| `docx` | `AD016`, `AD017`, `AD028`, `AD055`, `AD056`, `AD058`, `AD059` |
 | `dependencies` | `AD024`, `AD025`, `AD026`, `AD027` |
 | `diagram` | `AD012` |
 | `format` | `AD041` |
 | `headings` | `AD001`, `AD002`, `AD005`, `AD006`, `AD007`, `AD043`, `AD045` |
-| `image` | `AD011`, `AD013`, `AD016`, `AD025`, `AD028` |
+| `image` | `AD011`, `AD013`, `AD016`, `AD025`, `AD028`, `AD057` |
 | `include` | `AD006`, `AD019`, `AD022`, `AD024` |
 | `inline` | `AD041` |
-| `lists` | `AD008`, `AD036` |
+| `list` | `AD056` |
+| `lists` | `AD008`, `AD009`, `AD036` |
+| `pandoc` | `AD059` |
 | `parser` | `AD000` |
-| `table` | `AD004`, `AD010`, `AD017`, `AD030` |
+| `table` | `AD004`, `AD010`, `AD017`, `AD030`, `AD057`, `AD059` |
 | `waiver` | `ADW01`, `ADW02`, `ADW03`, `ADW04`, `ADW05`, `ADW06`, `ADW07`, `ADW08` |
 | `whitespace` | `AD034` |
 | `references` | `AD023` |
 | `links` | `AD027`, `AD031`, `AD042`, `AD044` |
-| `structure` | `AD043` |
+| `structure` | `AD009`, `AD019`, `AD020`, `AD022`, `AD023`, `AD043`, `AD046`, `AD047`, `AD048`, `AD049`, `AD050`, `AD051`, `AD052`, `AD053`, `AD054`, `AD056`, `AD057` |
 | `markdown-compatibility` | `AD045` |
 | `maintainability` | `AD045` |
 | `xref` | `AD026`, `AD042`, `AD044` |

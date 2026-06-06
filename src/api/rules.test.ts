@@ -172,6 +172,19 @@ describe("rule loading and metadata", () => {
     expect(config.customRules).toBeUndefined();
   });
 
+  it("does not load the home config twice when it is also discovered as the project config", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-home-project-"));
+    const project = path.join(home, "work", "project");
+    fs.mkdirSync(path.join(home, ".asciidoclint"), { recursive: true });
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(path.join(home, ".asciidoclint", "config.yaml"), "customRules:\n  - ./global-rules\n");
+
+    const { config, sources } = loadConfigDetails({ cwd: project, homeDir: home });
+
+    expect(sources).toEqual([{ kind: "global", file: path.join(home, ".asciidoclint", "config.yaml") }]);
+    expect(config.customRules).toEqual([path.join(home, "global-rules")]);
+  });
+
   it("scaffolds custom rules with id-first filenames", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-init-rule-"));
     const files = initRule({ tag: "org", id: "ORG001", alias: "no-todo", directory });

@@ -111,8 +111,19 @@ Tests and examples:
   files when relevant.
 - For source scanners, tests must enumerate supported syntax variants and
   documented exclusions.
-- Keep examples sanitized. Do not commit customer, product, internal path,
-  person, project, bug, register/interface, or confidential names.
+- Keep examples sanitized. This is a hard gate for built-ins, custom rules,
+  docs, tests, fixtures, prompt text, and generated examples. Do not commit
+  customer, employer, organization, product, internal path, private URL, person,
+  username, email, project, bug, register/interface, device, or confidential
+  names. Use neutral placeholders such as `Product`, `Component`, `Register`,
+  `example.internal`, `ISSUE-123`, or `architecture.png` only when the syntax
+  shape matters.
+- Keep `docs.summary`, `docs.rationale`, `docs.fixHelper`, diagnostic messages,
+  snapshots, and fixture filenames generic. Do not encode the source corpus,
+  customer, product, project, or internal policy name.
+- When a rule is discovered from a real document, first reduce it to a minimal
+  neutral reproduction. Preserve only the syntax pattern needed to trigger or
+  suppress the finding.
 
 After creating or editing a custom rule, validate:
 

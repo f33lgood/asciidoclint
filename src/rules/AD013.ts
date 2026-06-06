@@ -12,8 +12,8 @@ export const AD013: Rule = {
     rationale: "Standalone inline image macros can render with paragraph spacing and caption behavior that differs from figures.",
     fixability: "unsafe",
     fixHelper: "Use image::target[alt] for standalone figures, and reserve image:target[alt] for inline images inside text.",
-    badExamples: [{ code: "image:diagram.png[Architecture]" }],
-    goodExamples: [{ code: "image::diagram.png[Architecture]" }],
+    badExamples: [{ code: "image:diagram.png[Overview]" }],
+    goodExamples: [{ code: "image::diagram.png[Overview]" }],
   },
   function: ({ document }, onError) => {
     for (const file of document.files) {

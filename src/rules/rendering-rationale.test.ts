@@ -51,7 +51,7 @@ function completeDocument(source: string): string {
 
 function makeExampleBaseDir(): string {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "asciidoclint-rule-examples-"));
-  for (const file of ["diagram.png", "architecture.png", "image.png", "datasheet.pdf"]) {
+  for (const file of ["diagram.png", "overview.png", "image.png", "datasheet.pdf"]) {
     fs.writeFileSync(path.join(directory, file), "fixture");
   }
   fs.writeFileSync(path.join(directory, "chapter.adoc"), "== Chapter\n\nIncluded content.\n");
@@ -71,15 +71,15 @@ describe("AsciiDoc rendering facts behind built-in rules", () => {
   });
 
   it("shows that plain figure captions are paragraphs, not block titles", () => {
-    const bad = render("= Title\n\nFigure 1: Architecture\nimage::diagram.png[Architecture]\n");
-    const good = render("= Title\n\n.Architecture\nimage::diagram.png[Architecture]\n");
-    const doubled = render("= Title\n\n.Figure 1. Architecture\nimage::diagram.png[Architecture]\n");
+    const bad = render("= Title\n\nFigure 1: Overview\nimage::diagram.png[Overview]\n");
+    const good = render("= Title\n\n.Overview\nimage::diagram.png[Overview]\n");
+    const doubled = render("= Title\n\n.Figure 1. Overview\nimage::diagram.png[Overview]\n");
 
-    expect(bad).toContain("<p>Figure 1: Architecture");
-    expect(bad).toContain("image::diagram.png[Architecture]</p>");
-    expect(bad).not.toContain('<div class="title">Figure 1: Architecture</div>');
-    expect(good).toContain('<div class="title">Figure 1. Architecture</div>');
-    expect(doubled).toContain('<div class="title">Figure 1. Figure 1. Architecture</div>');
+    expect(bad).toContain("<p>Figure 1: Overview");
+    expect(bad).toContain("image::diagram.png[Overview]</p>");
+    expect(bad).not.toContain('<div class="title">Figure 1: Overview</div>');
+    expect(good).toContain('<div class="title">Figure 1. Overview</div>');
+    expect(doubled).toContain('<div class="title">Figure 1. Figure 1. Overview</div>');
   });
 
   it("shows that plain table captions are paragraphs, not table titles", () => {
@@ -117,6 +117,19 @@ describe("AsciiDoc rendering facts behind built-in rules", () => {
     expect(html).toContain("<p>======= Too Deep</p>");
     expect(html).not.toContain("<h7");
     expect(html).not.toContain("sect6");
+  });
+
+  it("shows that unseparated list content consumes following structural lines", () => {
+    const section = render("= Title\n\n* item\n== Intended Section\n");
+    const titledImage = render("= Title\n\n* item\n.Figure title\nimage::diagram.png[Diagram]\n");
+    const separated = render("= Title\n\n* item\n\n== Intended Section\n");
+
+    expect(section).toContain("<p>item\n== Intended Section</p>");
+    expect(section).not.toContain("<h2");
+    expect(titledImage).toContain("<p>item\n.Figure title\nimage::diagram.png[Diagram]</p>");
+    expect(titledImage).not.toContain("<img");
+    expect(separated).toContain("<h2");
+    expect(separated).not.toContain("== Intended Section</p>");
   });
 
   it("shows that Markdown tables, links, and images render as plain content in AsciiDoc", () => {

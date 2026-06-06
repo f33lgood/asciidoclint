@@ -3,7 +3,7 @@ import fs from "node:fs";
 import fg from "fast-glob";
 import { parseDocument, resolveDocumentXrefs } from "../parsers/tolerant.js";
 import { helpers } from "../rules/helpers.js";
-import type { BlockNode, LintFinding, LintOptions, LintResult, NormalizedDocument, ReferenceTarget, Rule } from "../types.js";
+import type { BlockNode, LintFinding, LintOptions, LintResult, NormalizedDocument, ReferenceTarget, Rule, SectionNode } from "../types.js";
 import { getVersion } from "../version.js";
 import { applyFixes } from "./fixes.js";
 import { loadRules, type Config } from "./rules.js";
@@ -27,6 +27,7 @@ async function lintFilesInternal(patterns: string[], options: LintOptions, after
     for (const parsedFile of document.files) {
       parsedFiles.set(path.resolve(parsedFile.file), parsedFile);
     }
+    mergeAsciidoctorSections(document, await collectParserSections(file));
     mergeAsciidoctorBlocks(document, await collectParserBlocks(file));
     mergeAsciidoctorReferenceTargets(document, await collectParserReferenceTargets(file));
     resolveDocumentXrefs(document);
@@ -81,28 +82,69 @@ async function collectParserBlocks(file: string): Promise<BlockNode[]> {
   return collectAsciidoctorBlocks(file);
 }
 
+async function collectParserSections(file: string): Promise<SectionNode[]> {
+  const { collectAsciidoctorSections } = await import("../parsers/asciidoctor.js");
+  return collectAsciidoctorSections(file);
+}
+
 async function collectParserReferenceTargets(file: string): Promise<ReferenceTarget[]> {
   const { collectAsciidoctorReferenceTargets } = await import("../parsers/asciidoctor.js");
   return collectAsciidoctorReferenceTargets(file);
+}
+
+function mergeAsciidoctorSections(document: NormalizedDocument, sections: SectionNode[]): void {
+  if (!sections.length) {
+    return;
+  }
+  for (const section of sections) {
+    const existing = document.sections.find((candidate) => (
+      path.resolve(candidate.range.start.file) === path.resolve(section.range.start.file)
+      && candidate.range.start.line === section.range.start.line
+      && candidate.title === section.title
+    ));
+    if (!existing) {
+      continue;
+    }
+    existing.sectname = section.sectname;
+    existing.source = "asciidoctor";
+    if (!existing.style && section.style) {
+      existing.style = section.style;
+    }
+  }
 }
 
 function mergeAsciidoctorBlocks(document: NormalizedDocument, blocks: BlockNode[]): void {
   if (!blocks.length) {
     return;
   }
-  const authoritativeTypes = new Set(blocks.map((block) => block.type));
+  const authoritativeTypes = new Set(blocks
+    .filter((block) => ["table", "image", "diagram"].includes(block.type))
+    .map((block) => block.type));
   const authoritativeFiles = new Set(blocks.map((block) => path.resolve(block.range.start.file)));
-  document.blocks = [
+  const merged = [
     ...document.blocks.filter((block) => (
       !authoritativeTypes.has(block.type)
       || !authoritativeFiles.has(path.resolve(block.range.start.file))
     )),
-    ...blocks,
-  ].sort((a, b) => (
+  ];
+  for (const block of blocks) {
+    if (!merged.some((candidate) => sameBlock(candidate, block))) {
+      merged.push(block);
+    }
+  }
+  document.blocks = merged.sort((a, b) => (
     a.range.start.file.localeCompare(b.range.start.file)
     || a.range.start.line - b.range.start.line
     || a.range.start.column - b.range.start.column
   ));
+}
+
+function sameBlock(a: BlockNode, b: BlockNode): boolean {
+  return path.resolve(a.range.start.file) === path.resolve(b.range.start.file)
+    && a.range.start.line === b.range.start.line
+    && a.range.start.column === b.range.start.column
+    && a.type === b.type
+    && a.style === b.style;
 }
 
 function mergeAsciidoctorReferenceTargets(document: NormalizedDocument, targets: ReferenceTarget[]): void {

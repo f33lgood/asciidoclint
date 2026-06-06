@@ -1,5 +1,5 @@
 import type { Rule } from "../types.js";
-import { hasTitleImmediatelyBefore } from "./utils.js";
+import { findPrecedingTitleLineIndex, getAsciiDocTitle, hasTitleImmediatelyBefore } from "./utils.js";
 
 export const AD010: Rule = {
   id: "AD010",
@@ -11,7 +11,7 @@ export const AD010: Rule = {
     summary: "A block table should have a preceding .Title line.",
     rationale: "Table titles make rendered tables referenceable and easier to review.",
     fixability: "no",
-    fixHelper: "Add a table title using .Title immediately before the table metadata, or set title=\"...\" in the table attribute list.",
+    fixHelper: "Add a meaningful table title using .Title immediately before the table metadata, or set title=\"...\" in the table attribute list. Derive the title from nearby section text, table headers, an imported caption, or the table purpose; do not use generic placeholders such as .Table Table.",
     badExamples: [{ code: "|===\n| A | B\n|===" }],
     goodExamples: [{ code: ".Register fields\n|===\n| A | B\n|===" }],
   },
@@ -23,6 +23,17 @@ export const AD010: Rule = {
         continue;
       }
       const index = block.range.start.line - 1;
+      const titleLine = findPrecedingTitleLineIndex(lines, index);
+      const title = block.title ?? (titleLine === undefined ? undefined : getAsciiDocTitle(lines[titleLine] ?? ""));
+      if (isPlaceholderTableTitle(title)) {
+        onError({
+          severity: "warning",
+          message: "Table title is a generic placeholder",
+          range: { start: { file: block.range.start.file, line: (titleLine ?? index) + 1, column: 1 } },
+          fixHelper: "Replace the placeholder with a meaningful table title derived from nearby section text, table headers, an imported caption, or the table purpose.",
+        });
+        continue;
+      }
       if (isTableCellLine(lines[index - 1] ?? "") || block.title || hasTitleImmediatelyBefore(lines, index)) {
         continue;
       }
@@ -30,7 +41,7 @@ export const AD010: Rule = {
           severity: "warning",
           message: "Table block should have a title",
           range: { start: { file: block.range.start.file, line: block.range.start.line, column: 1 } },
-          fixHelper: "Add a .Title line immediately before the table.",
+          fixHelper: "Add a meaningful .Title line immediately before the table; do not use generic placeholders such as .Table Table.",
         });
     }
   },
@@ -39,4 +50,8 @@ export const AD010: Rule = {
 function isTableCellLine(line: string): boolean {
   const trimmed = line.trim();
   return trimmed.startsWith("|") && trimmed !== "|===";
+}
+
+function isPlaceholderTableTitle(title: string | undefined): boolean {
+  return typeof title === "string" && /^(?:table|table\s+table)$/i.test(title.trim());
 }

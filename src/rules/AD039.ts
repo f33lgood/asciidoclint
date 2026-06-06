@@ -12,8 +12,8 @@ export const AD039: Rule = {
     rationale: "AsciiDoc supports inline passthroughs, but wrappers around _, [, ], <, >, and | are common conversion residue when they appear in ordinary source text.",
     fixability: "safe",
     fixHelper: "Replace the passthrough-wrapped punctuation with the literal character when AD039 reports it.",
-    badExamples: [{ code: "SE++_++KSLT and SE++[++0-4++]++" }],
-    goodExamples: [{ code: "SE_KSLT and SE[0-4]" }],
+    badExamples: [{ code: "MODULE++_++ALPHA and MODULE++[++0-4++]++" }],
+    goodExamples: [{ code: "MODULE_ALPHA and MODULE[0-4]" }],
   },
   function: ({ document }, onError) => {
     for (const file of document.files) {

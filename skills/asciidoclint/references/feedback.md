@@ -26,13 +26,16 @@ Also collect:
 - whether waivers are involved;
 - whether VS Code-compatible extension diagnostics are involved;
 - minimal sanitized AsciiDoc reproduction;
-- actual output, preferably from `--format json`;
+- actual output, preferably from sanitized `--format json`;
 - expected output or behavior.
 
-Do not include confidential document text, customer names, internal paths,
-project names, people, product codenames, bug IDs, or private URLs. Replace them
-with neutral placeholders while preserving the syntax shape that reproduces the
-issue.
+Do not include raw config values, absolute paths, confidential document text,
+customer names, employer or organization names, internal paths, project names,
+people, usernames, emails, product codenames, bug IDs, private URLs,
+register/interface names, device names, or proprietary examples. Redact JSON
+`files`, `range.start.file`, `context`, command arguments, and config snippets as
+needed. Replace sensitive values with neutral placeholders while preserving the
+syntax shape that reproduces the issue.
 
 Paste-ready issue shape:
 
