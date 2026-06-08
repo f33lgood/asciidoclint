@@ -11,7 +11,7 @@ https://github.com/f33lgood/asciidoclint/issues
 Gather what is available without exposing private source content:
 
 ```bash
-npx asciidoclint --version
+<asciidoclint> --version
 node --version
 npm --version
 ```

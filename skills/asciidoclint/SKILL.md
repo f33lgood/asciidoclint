@@ -5,18 +5,21 @@ description: Use when linting AsciiDoc with asciidoclint, summarizing findings, 
 
 # asciidoclint
 
-Use this skill for end-user `asciidoclint` workflows. Prefer the workspace
-`asciidoclint` install when present so project configuration, custom rules, and
-CI behavior match the user's project.
+Use this skill for end-user `asciidoclint` workflows. Prefer the explicit
+project-pinned `asciidoclint` install when present; otherwise use the user's
+global `asciidoclint` on `PATH`.
 
 ## Tool Resolution
 
 Use this order:
 
-1. `./node_modules/.bin/asciidoclint`
+1. nearest project ancestor's `.asciidoclint/node_modules/.bin/asciidoclint`
 2. `asciidoclint` on `PATH`
 3. `npx asciidoclint`
-4. `npx -y asciidoclint@latest`
+
+After resolving the executable, refer to it as `<asciidoclint>` in workflow
+commands. Do not search standard workspace `node_modules/.bin/asciidoclint`
+from this skill.
 
 Run from the repository or document workspace root unless the user names a
 specific directory.

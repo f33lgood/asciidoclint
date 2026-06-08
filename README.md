@@ -9,11 +9,38 @@ CLI, AI-agent, and editor workflows.
 
 ## Install the npm package
 
+`asciidoclint` requires Node.js 20 or newer. The package does not install or
+manage Node.js; use the Node.js version chosen by your shell, package manager, or
+higher-level tooling.
+
+Install globally when you want `asciidoclint` available as a shell command:
+
 ```bash
-npm install --save-dev asciidoclint
+npm install -g asciidoclint
+```
+
+If the shell cannot find `asciidoclint` after install, npm's global bin
+directory may not be on `PATH`. It is usually:
+
+```bash
+$(npm prefix -g)/bin
+```
+
+For documentation repositories that need a pinned project-local install without
+creating a project-root `package.json`, install under `.asciidoclint`:
+
+```bash
+npm --prefix .asciidoclint install asciidoclint@<version>
 ```
 
 ## Use the CLI
+
+The examples below use `npx asciidoclint` because that works even when npm's
+global bin directory is not on `PATH`. If `asciidoclint` is recognized by your
+shell, you can use `asciidoclint` instead.
+
+If the package is installed with the dedicated project-local layout, use
+`.asciidoclint/node_modules/.bin/asciidoclint`.
 
 Run lint:
 
@@ -60,25 +87,42 @@ reporting.
 
 ## Install the AI skill
 
-The repository ships an `asciidoclint` skill for AI agents. Install it from the
-npm package:
+The npm package includes an `asciidoclint` skill for AI agents. Installing the
+npm package does not automatically install the skill into agent roots; run
+`install-skill` explicitly.
+
+For a user-global skill install:
 
 ```bash
 npx asciidoclint install-skill
 ```
 
-Or install it directly from GitHub with the open skills CLI:
+This copies the bundled skill to `~/.agents/skills/asciidoclint` and creates
+`~/.claude/skills/asciidoclint` as a symbolic link to that copy.
+
+For a pinned project-local skill install:
 
 ```bash
-npx skills add f33lgood/asciidoclint --skill asciidoclint -a codex -g
+npm --prefix .asciidoclint install asciidoclint@<version>
+.asciidoclint/node_modules/.bin/asciidoclint install-skill --project
 ```
 
-Remove the installed skill when you want to use `asciidoclint` without AI skill
-assistance:
+This creates symbolic links at `.agents/skills/asciidoclint` and
+`.claude/skills/asciidoclint`, pointing to the skill source bundled with the
+package or checkout that ran `install-skill`. Add `--force` only when replacing
+an existing project-local skill install.
+
+Remove installed skills explicitly:
 
 ```bash
 npx asciidoclint uninstall-skill
+npx asciidoclint uninstall-skill --project
 ```
+
+Normal npm uninstall removes package files only. It does not remove
+`~/.agents/skills/asciidoclint`, `~/.claude/skills/asciidoclint`,
+`.agents/skills/asciidoclint`, or `.claude/skills/asciidoclint`; run
+`uninstall-skill` for those.
 
 The public skill exposes these user-facing workflows:
 

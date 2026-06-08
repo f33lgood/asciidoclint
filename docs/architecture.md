@@ -612,6 +612,149 @@ workflows all consume the same metadata and examples.
 Details live in [Rule architecture](rule-architecture.md) and the generated
 [built-in rule docs](rules/).
 
+## CLI Installation Scopes
+
+`asciidoclint` is a Node.js npm package. The package should declare its minimum
+supported Node.js version, but it should not install or manage Node.js itself.
+Users, system administrators, package managers, or external runtime managers
+decide how Node.js is provided. A manager may reuse an existing `node`/`npm`
+pair when it satisfies the package's minimum version requirement, or install
+and use a separately managed Node.js runtime. That runtime choice remains
+outside the `asciidoclint` package.
+
+The preferred user experience is a user-global `asciidoclint` executable on
+`PATH`. Project-local installation is an explicit pinning model for special
+scenarios such as reproducible managed document workspaces, projects that need
+a version different from the user's global tool, or environments that cannot
+depend on user-global state.
+
+### User-Global Installation
+
+User-global installation makes `asciidoclint` available on `PATH`, usually
+through npm global bin handling, a package manager, an admin-managed wrapper, or
+another runtime manager. `asciidoclint` should not advocate a specific user bin
+directory such as `~/.local/bin`; it only needs to work when the executable is
+available on `PATH`. For npm global installs, the executable is normally linked
+under `$(npm prefix -g)/bin`; if that directory is not on `PATH`, the package can
+be installed successfully while `asciidoclint` is still not recognized by the
+shell.
+
+```text
+~/
+  .asciidoclint/
+    config.yaml                 # user-global asciidoclint config
+  .agents/
+    skills/
+      asciidoclint/             # common global skill install
+  .claude/
+    skills/
+      asciidoclint -> ../../.agents/skills/asciidoclint
+                                 # Claude-native mirror
+```
+
+The stable user-global config location is `~/.asciidoclint/config.yaml`.
+The common global skill source is `~/.agents/skills/asciidoclint`. Global
+`install-skill` copies the bundled skill there first, then creates
+`~/.claude/skills/asciidoclint` as a symbolic link to that common copy. This
+keeps one durable global skill copy while covering agents that read the common
+`.agents/skills` root and Claude Code's native `.claude/skills` root.
+
+Global skill directories are explicit installation targets. Normal `npm
+install` should not copy the skill into agent roots. The `install-skill`
+command, or an external skills installer, performs that step when requested.
+
+### Project-Local Installation
+
+Project-local installation may pin a package version under the project's
+`.asciidoclint` directory. This is the only recommended per-project npm install
+location for agentic workflows because it avoids creating or modifying a
+project-root `package.json`, `package-lock.json`, or `node_modules` directory in
+non-Node documentation repositories:
+
+```bash
+npm --prefix .asciidoclint install asciidoclint@<version>
+```
+
+```text
+project/
+  .asciidoclint/
+    config.yaml                 # project asciidoclint config
+    node_modules/
+      .bin/
+        asciidoclint            # npm-installed project-local executable
+      asciidoclint/             # pinned package contents
+  .agents/
+    skills/
+      asciidoclint -> <invoking-package>/skills/asciidoclint
+                                 # common project-local skill link
+  .claude/
+    skills/
+      asciidoclint -> <invoking-package>/skills/asciidoclint
+                                 # Claude-native project-local skill link
+```
+
+The project config location is `.asciidoclint/config.yaml`. The npm-created
+project executable is `.asciidoclint/node_modules/.bin/asciidoclint`. In the
+recommended released project-local channel, the invoking package is
+`.asciidoclint/node_modules/asciidoclint` and owns the bundled skill source at
+`.asciidoclint/node_modules/asciidoclint/skills/asciidoclint`.
+
+The Skill can find project-local installs by searching for
+`.asciidoclint/node_modules/.bin/asciidoclint`; a separate
+`.asciidoclint/bin/asciidoclint` wrapper is not required. A manager may still
+create that wrapper when it wants a stable project-owned executable path that
+encodes a specific Node.js executable, package install path, `PATH` setup,
+package mirror, cache policy, bootstrap behavior, or upgrade policy. A wrapper
+may look like:
+
+```bash
+#!/usr/bin/env bash
+exec /path/to/node /path/to/asciidoclint/dist/cli/index.js "$@"
+```
+
+The wrapper owns that runtime choice; the `asciidoclint` package itself does
+not install or select Node.js.
+
+`customRules` entries in config may point to any local path or shared package
+chosen by the user. The `.asciidoclint` directory is not required to contain
+custom rules.
+
+Project-local `install-skill` always creates symbolic links in both
+`.agents/skills/asciidoclint` and `.claude/skills/asciidoclint`, pointing to the
+bundled skill source from the package or checkout that invoked `install-skill`.
+For the recommended released project-local channel, that source is the
+project-local npm package. This keeps the package version, CLI, library, and
+Skill coupled to the project pin, while covering both the common `.agents/skills`
+root and Claude Code's native `.claude/skills` root. If the project-local npm
+package is removed, the broken links correctly reflect that the pinned project
+install was removed.
+
+This model is intended to be backward-compatible with user-visible CLI,
+configuration, editor, and diagnostics behavior. Existing `npx asciidoclint`
+commands, standard npm installs such as `npm install --save-dev asciidoclint`,
+normal npm global installs, `PATH` installs, `~/.asciidoclint/config.yaml`,
+`.asciidoclint/config.yaml`, existing `customRules` paths, and
+`.asciidoclint/diagnostics.json` should continue to work. The agentic Skill does
+not need to search standard workspace `node_modules/.bin/asciidoclint`; users
+who want an explicit project-pinned Skill runtime should use the dedicated
+`.asciidoclint/node_modules` install. Project-local skill links and
+manager-created wrappers are conventions around installation state, not changes
+to the lint API, editor settings, or diagnostics artifact contract.
+
+### CLI Resolution Order
+
+Agent-facing workflows should resolve a concrete `<asciidoclint>` command once,
+then use that placeholder in all commands. Use this order:
+
+1. Nearest project ancestor's
+   `.asciidoclint/node_modules/.bin/asciidoclint`.
+2. `asciidoclint` on `PATH`.
+3. `npx asciidoclint` as a fallback when no installed executable is available.
+
+Managers may add their own wrapper paths, such as
+`.asciidoclint/bin/asciidoclint`, before this list in managed environments, but
+the public Skill should not require those wrappers to exist.
+
 ## AI Skill Distribution
 
 `asciidoclint` should ship an installable AI-agent skill in the repository:
@@ -638,8 +781,8 @@ are:
   findings", "apply safe fixes", "apply unsafe fixes", "use AI to repair the
   remaining issues", "add a waiver", "create a custom rule", "review this
   rule", and "prepare a GitHub issue".
-- Resolve the tool in this order: workspace `node_modules/.bin/asciidoclint`,
-  `npx asciidoclint`, then `npx -y asciidoclint@latest`.
+- Resolve the tool using the CLI resolution order above, then refer to the
+  resolved executable as `<asciidoclint>` in agent-facing instructions.
 - Run `--format json` for machine-readable results.
 - Run `--fix` for deterministic safe fixes.
 - Run `--fix --unsafe` only when the user explicitly requests unsafe fixes.
@@ -654,53 +797,84 @@ are:
 - Rerun lint after edits, waivers, and rule changes, then summarize fixed and
   remaining findings.
 
-The primary skill install path should follow the open skills ecosystem:
+The open skills ecosystem may be able to install the public repository skill
+directly:
 
 ```bash
 npx skills add f33lgood/asciidoclint --skill asciidoclint -a codex -g
 ```
 
+That path is an external installer alternative, not the recommended
+`asciidoclint` package workflow. It may use the target paths and copy/symlink
+policy of the `skills` CLI, and it installs only the Skill source. It cannot
+guarantee that the `asciidoclint` npm package or executable is installed, so the
+package-owned `asciidoclint install-skill` behavior remains the supported path
+described below.
+
 The repository should not check in agent-specific install copies under
 `.agents/skills`, `.claude/skills`, or other target-agent directories. The
 single public source of truth is `skills/asciidoclint`, and developers should
 install it into their target agent when they need repo-local skill assistance.
-With that organization, the shorter form also installs the public skill:
-
-```bash
-npx skills add f33lgood/asciidoclint
-```
 
 The npm package should also expose a convenience installer:
 
 ```bash
-npx asciidoclint install-skill
-npx asciidoclint uninstall-skill
+asciidoclint install-skill
+asciidoclint uninstall-skill
 ```
 
-This command copies the bundled `skills/asciidoclint` directory into
-the selected agent's skill root. It should support `--agent` for common coding
-agents, `--project` for project-local installs, `--dest` for explicit test or
-custom install roots, and `--force` to replace an existing skill. This keeps
-npm-package installs version-aligned with the skill that was published in the
-same package.
+This command installs the bundled `skills/asciidoclint` skill into both the
+common `.agents/skills` root and Claude Code's `.claude/skills` root. It does
+not need agent selection choices for the default path; installing both roots is
+small, predictable, and covers the majority of current skill-aware agents.
+The existing `--dest` option remains useful for tests and explicit custom skill
+roots. Existing `--agent` usage no longer maps cleanly to the deterministic
+two-root policy, so explicit `--agent` use should fail with a clear deprecation
+message instead of silently selecting a legacy root or being ignored.
 
-`uninstall-skill` should remove `asciidoclint` from the same selected skills
-root. It should be idempotent so users can disable skill assistance without
-needing to inspect the filesystem first.
+Use this policy:
 
-The installer intentionally implements only the small target matrix needed by
-`asciidoclint`; the open `skills` CLI remains the full interactive installer.
-Validated target paths from `npx skills`:
+- Project-local install: create symbolic links at
+  `.agents/skills/asciidoclint` and `.claude/skills/asciidoclint`, both pointing
+  to the bundled `skills/asciidoclint` source from the invoking package or
+  checkout. In the recommended released project-local channel, that is
+  `.asciidoclint/node_modules/asciidoclint/skills/asciidoclint`.
+- User-global install: copy the bundled skill to
+  `~/.agents/skills/asciidoclint`, then create
+  `~/.claude/skills/asciidoclint` as a symbolic link to that global common
+  copy.
 
-| Agent | `--agent` | Project root | Global root |
-|---|---|---|---|
-| Codex | `codex` | `.agents/skills/` | `~/.codex/skills/` |
-| Cursor | `cursor` | `.agents/skills/` | `~/.cursor/skills/` |
-| Claude Code | `claude-code` | `.claude/skills/` | `~/.claude/skills/` |
-| OpenClaw | `openclaw` | `skills/` | `~/.openclaw/skills/` |
+The reasoning is scope ownership. A project-local package install lives in
+project state, so project-local skill links can point directly at the package's
+bundled skill source; if the project package is removed, the broken links
+correctly indicate that the project pin was removed. A user-global install may
+be invoked from `npx`/npm exec cache, such as `~/.npm/_npx/<hash>/...`, which is
+not durable user skill state. Therefore global install first copies the skill
+to `~/.agents/skills/asciidoclint`; the Claude root is only a mirror to that
+durable copy.
 
-`--dest <skills-root>` overrides the target matrix and installs directly under
-the supplied skills root.
+`uninstall-skill` should remove `asciidoclint` from both `.agents/skills` and
+`.claude/skills` at the selected scope. It should be idempotent so users can
+disable skill assistance without needing to inspect the filesystem first.
+For project-local installs, it removes the two project skill symlinks. For
+user-global installs, it removes the `~/.claude/skills/asciidoclint` symlink
+and the copied `~/.agents/skills/asciidoclint` directory. It does not need to
+match the currently running npm package version because the global skill copy
+is installed skill state, not package-owned state.
+
+Normal npm uninstall manages only package files. It must not be expected to
+remove user-global or project-local skill roots. For example,
+`npm uninstall -g asciidoclint` does not remove `~/.agents/skills/asciidoclint`
+or `~/.claude/skills/asciidoclint`, and
+`npm --prefix .asciidoclint uninstall asciidoclint` does not remove
+`project/.agents/skills/asciidoclint` or
+`project/.claude/skills/asciidoclint`. Users who want to remove skill
+installations should run `asciidoclint uninstall-skill` explicitly.
+
+The installer should implement this deterministic policy directly. Tests should
+cover the global copy plus Claude symlink, project symlinks, explicit `--dest`
+copy compatibility path, `--force` replacement, and idempotent uninstall of
+both valid and broken symlinks.
 
 ### Skill Installation Channels
 
@@ -711,19 +885,18 @@ the repository checkout lives:
 npx asciidoclint@latest install-skill --force
 ```
 
-or, for a project-local install that should travel with the current workspace:
+For a project-local install that should travel with the current workspace:
 
 ```bash
-npx asciidoclint@latest install-skill --project --force
+npm --prefix .asciidoclint install asciidoclint@<version>
+.asciidoclint/node_modules/.bin/asciidoclint install-skill --project
 ```
 
-Install a released skill for a specific project-local agent target:
-
-```bash
-npx asciidoclint@latest install-skill --project --agent codex --force
-npx asciidoclint@latest install-skill --project --agent cursor --force
-npx asciidoclint@latest install-skill --project --agent claude-code --force
-```
+Do not use `npx asciidoclint install-skill --project` as the documented
+project-local path unless the command also bootstraps the
+`.asciidoclint/node_modules/asciidoclint` package install before creating
+symlinks. Otherwise the project skill links could point at npm exec cache rather
+than project-owned package state.
 
 Developers need two switchable channels:
 
@@ -732,9 +905,10 @@ Developers need two switchable channels:
   `asciidoclint` repository checkout.
 
 The active channel is determined by the CLI used to run `install-skill` and the
-destination selected by `--project`, `--dest`, or the default global skills
-root. `--force` is the explicit switch operation because it replaces the
-existing `asciidoclint` skill at that destination.
+scope selected by `--project` or by the default global install. First-time
+installation does not require `--force`. Use `--force` only as the explicit
+switch operation because it replaces the existing `asciidoclint` skill links or
+global copy at that scope.
 
 Inside the `asciidoclint` repository, install the workspace-under-development
 skill into the repository-local skill root:
@@ -743,15 +917,11 @@ skill into the repository-local skill root:
 npx tsx src/cli/index.ts install-skill --project --force
 ```
 
-Use `--agent claude-code` or `--agent cursor` to test those project install
-layouts from the same checkout. Avoid `--agent openclaw --project` inside the
-`asciidoclint` repository because OpenClaw's project path is `skills/`, which is
-also this repository's canonical public skill source directory.
-
 Switch that same repository workspace back to the released skill:
 
 ```bash
-npx asciidoclint@latest install-skill --project --force
+npm --prefix .asciidoclint install asciidoclint@latest
+.asciidoclint/node_modules/.bin/asciidoclint install-skill --project --force
 ```
 
 For global developer testing, use the same commands without `--project`.
@@ -773,15 +943,8 @@ npx tsx /path/to/asciidoclint/src/cli/index.ts install-skill --project --force
 Switch that outside project back to the released skill with:
 
 ```bash
-npx asciidoclint@latest install-skill --project --force
-```
-
-Use `--dest <skills-root>` when testing against an explicit Codex home or a
-temporary skills root:
-
-```bash
-npx asciidoclint@latest install-skill --dest /tmp/codex-skills --force
-node /path/to/asciidoclint/dist/cli/index.js install-skill --dest /tmp/codex-skills --force
+npm --prefix .asciidoclint install asciidoclint@latest
+.asciidoclint/node_modules/.bin/asciidoclint install-skill --project --force
 ```
 
 Remove a released, project-local, or temporary skill install with the matching
@@ -790,19 +953,18 @@ scope:
 ```bash
 npx asciidoclint@latest uninstall-skill
 npx asciidoclint@latest uninstall-skill --project
-npx asciidoclint@latest uninstall-skill --project --agent claude-code
-npx asciidoclint@latest uninstall-skill --dest /tmp/codex-skills
 ```
 
 Do not install separate public and developer copies under different skill names
 by default. A single `asciidoclint` skill name keeps user prompts stable; channel
-switching should happen by replacing the installed skill at the chosen scope.
+switching should happen by replacing the installed skill at the chosen scope in
+both `.agents/skills` and `.claude/skills`.
 The repository's `skills/asciidoclint` directory is the canonical public skill
 source. Checked-in `.agents/skills`, `.claude/skills`, and other agent-specific
 install directories are intentionally avoided; they are generated installation
 targets, not source artifacts. Developers who want repo-local skill assistance
-should install the development channel with `install-skill --project --agent
-<agent> --force` and uninstall it when done.
+should install the development channel with `install-skill --project --force`
+and uninstall it when done.
 
 LLM calls should remain outside the core npm package initially. The package
 stays deterministic and offline-friendly; the skill uses the surrounding agent
@@ -1100,6 +1262,12 @@ Expected editor behavior:
 
 - Activate for `asciidoc`, `adoc`, `asc`, and `asciidoc` language/file
   extensions.
+- Preserve existing user-facing settings, command names, and diagnostics import
+  behavior across extension auto-updates. In particular,
+  `.asciidoclint/config.yaml`, `.asciidoclint/diagnostics.json`,
+  `asciidoclint.config`, `asciidoclint.customRules`,
+  `asciidoclint.importCliDiagnostics`, and existing command palette workflows
+  remain compatibility contracts.
 - Do not lint on file open, focus, or typing. Lint on save in document context
   by default, or through explicit commands.
 - Read `.asciidoclint/config.yaml` from the workspace root or nearest project
@@ -1130,16 +1298,17 @@ Settings:
 {
   "asciidoclint.enable": true,
   "asciidoclint.run": "onSave",
-  "asciidoclint.defaultScope": "document",
   "asciidoclint.config": ".asciidoclint/config.yaml",
-  "asciidoclint.executablePath": "",
   "asciidoclint.customRules": [],
   "asciidoclint.hiddenRules": [],
   "asciidoclint.unsafeFixes": false,
-  "asciidoclint.followSymlinks": false,
   "asciidoclint.importCliDiagnostics": true
 }
 ```
+
+New editor settings such as a default lint scope, executable override, or
+symlink-following policy should be additive. They should not rename or remove
+the existing settings above without a migration path.
 
 When the official Asciidoctor VS Code extension is also installed, it can publish
 its own native Asciidoctor diagnostics as files are opened. Those diagnostics are
@@ -1161,14 +1330,18 @@ file navigation.
 
 Resolution order for the lint engine:
 
-1. Workspace `node_modules/.bin/asciidoclint` or package API when installed.
-2. Extension-bundled engine version.
-3. User-configured `asciidoclint.executablePath`.
+1. User-configured executable override, if that setting is added later.
+2. Project-local `.asciidoclint/node_modules/.bin/asciidoclint` or package API
+   when installed.
+3. Standard workspace `node_modules/.bin/asciidoclint` or package API when
+   installed.
+4. Extension-bundled engine version.
 
-The extension should prefer the workspace engine when present so project
-configuration and custom rule packages resolve exactly as they do in CI. The
-extension-bundled engine is a convenience fallback for users who only install
-the editor extension.
+The extension should prefer a project/workspace engine when present so project
+configuration and custom rule packages resolve exactly as they do in CI. It
+should continue to support the standard workspace `node_modules` convention for
+compatibility. The extension-bundled engine is a convenience fallback for users
+who only install the editor extension.
 
 Custom rule scalability must match the CLI:
 

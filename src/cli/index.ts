@@ -41,13 +41,13 @@ program
   .command("install-skill")
   .description("install the bundled AI-agent skill")
   .option("--dest <directory>", "skills root directory")
-  .option("--agent <agent>", "target agent: codex, cursor, claude-code, or openclaw", "codex")
-  .option("--project", "install into the target agent's project skills directory")
+  .option("--agent <agent>", "deprecated; fails with guidance instead of selecting a skill root")
+  .option("--project", "install into project .agents and .claude skill roots")
   .option("--force", "replace an existing installed skill")
   .action((options: { dest?: string; project?: boolean; agent?: "codex" | "cursor" | "claude-code" | "openclaw"; force?: boolean }) => {
     try {
       const result = installSkill(options);
-      console.log(`Installed asciidoclint skill to ${result.destination}`);
+      console.log(`Installed asciidoclint skill to ${result.destinations.join(", ")}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 2;
@@ -58,15 +58,15 @@ program
   .command("uninstall-skill")
   .description("uninstall the AI-agent skill")
   .option("--dest <directory>", "skills root directory")
-  .option("--agent <agent>", "target agent: codex, cursor, claude-code, or openclaw", "codex")
-  .option("--project", "uninstall from the target agent's project skills directory")
+  .option("--agent <agent>", "deprecated; fails with guidance instead of selecting a skill root")
+  .option("--project", "uninstall from project .agents and .claude skill roots")
   .action((options: { dest?: string; project?: boolean; agent?: "codex" | "cursor" | "claude-code" | "openclaw" }) => {
     try {
       const result = uninstallSkill(options);
       console.log(
         result.removed
-          ? `Uninstalled asciidoclint skill from ${result.destination}`
-          : `No asciidoclint skill installed at ${result.destination}`,
+          ? `Uninstalled asciidoclint skill from ${result.removedDestinations.join(", ")}`
+          : `No asciidoclint skill installed at ${result.destinations.join(", ")}`,
       );
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));

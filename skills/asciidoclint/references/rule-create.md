@@ -15,8 +15,8 @@ Default placement:
 For custom rules, scaffold with:
 
 ```bash
-npx asciidoclint init-rule --tag organization --id ORG001 --alias no-todo
-npx asciidoclint init-rule --tag organization --id ORG002 --alias section-policy --directory ./lint-rules
+<asciidoclint> init-rule --tag organization --id ORG001 --alias no-todo
+<asciidoclint> init-rule --tag organization --id ORG002 --alias section-policy --directory ./lint-rules
 ```
 
 `--tag` is a grouping tag stored in rule metadata. `--pack` remains accepted as
@@ -128,10 +128,10 @@ Tests and examples:
 After creating or editing a custom rule, validate:
 
 ```bash
-npx asciidoclint --validate-rules
-npx asciidoclint --list-rules --format json
-npx asciidoclint --custom-rule ./lint-rules --list-rules
-npx asciidoclint --custom-rule ./lint-rules index.adoc
+<asciidoclint> --validate-rules
+<asciidoclint> --list-rules --format json
+<asciidoclint> --custom-rule ./lint-rules --list-rules
+<asciidoclint> --custom-rule ./lint-rules index.adoc
 ```
 
 For user-facing custom rule usage, prefer the guide in `docs/custom-rules.md`.

@@ -1,6 +1,6 @@
 {
   "name": "asciidoclint",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "AsciiDoc syntax, structure, and document-policy linter",
   "author": "Shawn Hu",
   "license": "MIT",

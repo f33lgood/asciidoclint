@@ -3,13 +3,13 @@
 Run lint in JSON mode:
 
 ```bash
-npx asciidoclint --format json <targets>
+<asciidoclint> --format json <targets>
 ```
 
 If the user wants deterministic safe fixes, run:
 
 ```bash
-npx asciidoclint --fix --format json <targets>
+<asciidoclint> --fix --format json <targets>
 ```
 
 Then rerun without `--fix` and summarize remaining findings.
@@ -17,7 +17,7 @@ Then rerun without `--fix` and summarize remaining findings.
 Run unsafe fixes only when explicitly requested:
 
 ```bash
-npx asciidoclint --fix --unsafe --format json <targets>
+<asciidoclint> --fix --unsafe --format json <targets>
 ```
 
 Unsafe fixes may alter rendered structure, link semantics, paths, or author
@@ -26,7 +26,7 @@ intent. Rerun lint after unsafe fixes.
 For VS Code-compatible editor diagnostics import, write:
 
 ```bash
-npx asciidoclint --format json \
+<asciidoclint> --format json \
   --output-diagnostics .asciidoclint/diagnostics.json \
   <targets>
 ```
